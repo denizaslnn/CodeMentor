@@ -1,0 +1,21 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: code-service
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# Bizim oluşturacağımız kuyruk isimleri
+rabbitmq:
+  exchange: code.analysis.exchange
+  queue: code.analysis.queue
+  routingkey: code.analysis.routingkey
