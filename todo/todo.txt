@@ -1,0 +1,298 @@
+ Mevcut **CodeMentor** planı, "balık tutmayı öğretme" felsefesi açısından güçlü bir temel atmış. Ancak öğrenciyi sadece "Spring Boot + vLLM kullanan geliştirici" değil, **"kendi AI'sini besleyebilen, ürettiği sistemin operasyonel omurgasını kurabilen ve gerçek dünya kırılımlarını öngörebilen mühendis"** seviyesine çıkarmak için aşağıdaki eksiklikler kapatılmalı.
+
+Aşağıda mevcut 6 fazı koruyup her fazı **mühendislik derinliği** ve **AI self-improvement** boyutuyla zenginleştiren, ardından **2 yeni faz (FAZ 7-8)** ekleyen revize planı bulacaksın. İstersen bunu 30 günde sıkıştırabilir, istersen **30 Gün Core + 10 Gün Advanced** olarak uygulayabilirsin.
+
+---
+
+# 🔍 Mevcut Planın Eksik Kalan Yönleri
+
+| Alan | Eksiklik | Neden Kritik? |
+|------|----------|---------------|
+| **Self-Training Loop** | AI cevabı sadece tüketiliyor; sistem kendi kendini geliştiremiyor. | Production AI'da en önemli fark, "modeli deploy etmek" değil, "modeli besleyerek iyileştirmektir". |
+| **AI Evaluation** | AI çıktısının kalitesini ölçen mekanizma yok. | "Çalışıyor" demek yeterli değil; BLEU/ROUGE/LLM-as-a-Judge metrikleri şart. |
+| **RAG & Memory** | LLM context'i sadece anlık prompt ile sınırlı. | Öğrenci, "model neden bu cevabı verdi?" sorusunu sadece promptla değil, vektör veritabanıyla cevaplamalı. |
+| **Advanced Testing** | Sadece unit test. Contract, chaos, property-based testing yok. | Mikroserviste "benim servisim çalışıyor" demek yeterli değil; "başkasının servisiyle konuşurken bozulmuyor" demek gerekir. |
+| **Observability** | Log+metric+trace geçişken bahsedilmiş ama dağıtık tracing, profiling, JVM telemetry eksik. | "İstek neden 8 saniye sürdü?" sorusuna cevap verebilmek için distributed trace (OpenTelemetry) şart. |
+| **Security** | JWT geçişken. Rate limiting, mTLS, secret management, OWASP, prompt injection yok. | AI sistemlerinde prompt injection, PII leak ve adversarial input gerçek tehditlerdir. |
+| **Data Engineering** | PostgreSQL kullanımı basit seviyede. CDC, migration (Flyway), read replica, connection pool tuning yok. | Veri katmanı ölçeklenirken ilk çöken noktadır. |
+| **SRE & Platform** | Docker Compose ile kalınıyor. K8s, GitOps, auto-scaling, blue-green, cost optimization yok. | "10 kat büyürse ne olur?" sorusuna cevap verebilmek için platform bilgisi gerekir. |
+| **Architecture Patterns** | Event-driven, CQRS, Saga, Outbox, Idempotency gibi dağıtık sistem desenleri yok. | Servisler arası tutarlılık (consistency) ve hata izolasyonu için bu desenler olmazsa olmazdır. |
+
+---
+
+# 🏗️ Revize Edilmiş ve Genişletilmiş Plan
+
+## FAZ 1 — Java ve Backend'i Anlamak *(Gün 1-5)*
+
+### Gün 1 — Problem Tespiti + **Mühendislik Derinliği: Requirement Analysis**
+- **Ekleme:** Öğrenci sadece "ne yapacak" demeyecek; **RFC (Request for Comments)** formatında 1 sayfalık doküman yazacak.
+- **Self-Training Bağlamı:** "Bu uygulamanın 6 ay sonra kendi kendine öğrenmesi için hangi veriyi toplamalıyım?" sorusu sorulacak. (Feedback loop'un temeli atılır.)
+
+### Gün 2 — Spring Boot + **JVM Telemetry**
+- **Ekleme:** Spring Boot Actuator + Micrometer ile `/actuator/metrics` üzerinden JVM heap, GC, thread metriklerini görüntüleme.
+- **Neden:** "Kod çalışıyor" demek yerine "kod ne kadar kaynak tüketiyor" sorusu sorulur.
+
+### Gün 3 — REST API + **API Versioning & Idempotency**
+- **Ekleme:** `Idempotency-Key` header'ı ile POST isteklerinin tekrarlanabilirliği sağlanır. Aynı kod+prompt ikinciye gönderildiğinde AI'ya gitmeden cache/DB'den dönülür.
+- **Neden:** Dağıtık sistemlerde ağ timeout sonrası retry yapıldığında duplicate analiz oluşmamalı.
+
+### Gün 4 — PostgreSQL + **Migration & Connection Pooling**
+- **Ekleme:** Flyway veya Liquibase ile schema migration. HikariCP connection pool metrics (active, idle, waiting).
+- **Self-Training Bağlamı:** `feedback` tablosu tasarlanır: `analysis_id`, `rating`, `user_correction`, `created_at`. AI'nın kendini geliştireceği verinin şeması kurulur.
+
+### Gün 5 — Test + **Mutation & Property-Based Testing**
+- **Ekleme:** JUnit 5 dışında **PIT (Mutation Testing)** ve **jqwik** (property-based testing) ile "testlerim gerçekten hata yakalıyor mu?" sorusu test edilir.
+- **Neden:** Code coverage %80 olabilir ama testler assertion içermeyebilir. Mutation testing bu yanılsamayı kırar.
+
+---
+
+## FAZ 2 — Gerçek Bir Mikroservis Oluşturmak *(Gün 6-10)*
+
+### Gün 6 — Monorepo + **API-First Design (OpenAPI Generator)**
+- **Ekleme:** `openapi.yaml` önce yazılır, `spring-generator` ile client ve server stub'ları üretilir. Code Service ve AI Service arasındaki contract kod değil, spec üzerinden yönetilir.
+- **Neden:** "Benim servisim çalışıyor" demek yerine "benim servisimin contract'ı bozulmadı" garantisi verilir.
+
+### Gün 7 — Servis Sınırı + **CAP Teoremi & Consistency**
+- **Ekleme:** Code Service (kod kaydı) ve AI Service (analiz) arasında **eventual consistency** kararı verilir. **Outbox Pattern** tanıtılır.
+- **Neden:** AI Service down olsa bile kullanıcı kodu kaydedilmeli; analiz sonradan async tamamlanmalı.
+
+### Gün 8 — AI Service + **Mock Server & Contract Testing (Pact)**
+- **Ekleme:** AI Service mock'lanırken **Pact** kullanılır. Code Service → AI Service consumer contract'ı test edilir.
+- **Neden:** AI Service'i 3 ay sonra değiştirdiğinde Code Service'in bozulup bozulmadığı CI'da otomatik kontrol edilir.
+
+### Gün 9 — Servisler Arası İletişim + **Resilience4j (Retry + Timeout + Bulkhead)**
+- **Ekleme:** Sadece HTTP değil; **bulkhead** (kaynak izolasyonu) ve **rate limiter** eklenir. AI Service'e aynı anda 100 istek gitmesin, 10'u aşan kuyrukta beklesin.
+- **Neden:** vLLM GPU memory'si sınırlıdır. Backpressure uygulama tarafında başlar.
+
+### Gün 10 — API Gateway + **Rate Limiting & Request Validation**
+- **Ekleme:** Bucket4j veya Gateway filter ile IP/user bazlı rate limiting. Spring Cloud Gateway `RequestRateLimiter` + Redis.
+- **Neden:** AI servisleri pahalıdır. "Aynı kullanıcı 1 saniyede 50 analiz isteği atarsa?" sorusu cevaplanır.
+
+---
+
+## FAZ 3 — AI'yı Sisteme Eklemek *(Gün 11-16)*
+
+### Gün 11 — LLM Temelleri + **Token Economics & Cost Analysis**
+- **Ekleme:** Öğrenci prompt'un token sayısını hesaplar. Input/output fiyatlandırma simülasyonu yapar (gerçek para değil, "bu prompt 4K token, her istek $0.002" gibi).
+- **Neden:** "Bu modeli neden kullanıyorum?" sorusuna maliyet cevabı da eklenir.
+
+### Gün 12 — vLLM + **Model Quantization & Speculative Decoding**
+- **Ekleme:** vLLM'de AWQ/GPTQ quantization ve (eğer GPU desteklerse) speculative decoding konfigürasyonu.
+- **Self-Training Bağlamı:** Daha hızlı inference = daha fazla feedback verisi işleyebilme kapasitesi.
+
+### Gün 13 — İlk AI Çağrısı + **Structured Output & JSON Schema Validation**
+- **Ekleme:** AI'dan dönen JSON, **JSON Schema** ile valid edilir. Jackson + Bean Validation (`@NotNull`, `@Pattern`) kullanılır.
+- **Neden:** AI "severity" yerine "sev" yazarsa sistem patlamamalı; graceful degradation olmalı.
+
+### Gün 14 — Prompt Engineering + **Prompt Versioning & A/B Testing**
+- **Ekleme:** Prompt'lar kod içinde string değil, `prompts/v1/analyze-java.txt` gibi dosyalarda tutulur. Version'lanır.
+- **Self-Training Bağlamı:** "Prompt v1 mi v2 mi daha iyi?" sorusu için A/B test altyapısının temeli atılır.
+
+### Gün 15 — Structured Output + **Output Normalization & Guardrails**
+- **Ekleme:** AI cevabı normalize edilirken **PII detection** (basit regex/NER) ve **toxicity filter** eklenir.
+- **Neden:** AI kullanıcı kodunda bir API key görebilir ve cevapta tekrar edebilir. Guardrails buna engel olur.
+
+### Gün 16 — AI Hataları + **LLM-as-a-Judge (Temel)**
+- **Ekleme:** AI cevabı bozuk çıktığında, ikincil bir "judge" prompt'u ile "bu cevap geçerli mi?" kontrolü yapılır.
+- **Neden:** AI'ya körü körüne güvenilmez. İkinci bir LLM çağrısı (daha hafif model) ile çıktı kalitesi ölçülür.
+
+---
+
+## FAZ 4 — Architecture Thinking *(Gün 17-22)*
+
+### Gün 17 — Failure + **Chaos Engineering**
+- **Ekleme:** **Chaos Monkey** benzeri bir script ile vLLM container'ı rastgele kill edilir. Sistem ne yapıyor gözlemlenir.
+- **Neden:** "vLLM down olursa ne olur?" sorusu teorik değil, canlı deneyle öğrenilir.
+
+### Gün 18 — Circuit Breaker + **Bulkhead & Backpressure**
+- **Ekleme:** Resilience4j `ThreadPoolBulkhead` ile AI Service çağrıları izole edilir. Reactor + backpressure ile request overflow engellenir.
+- **Neden:** vLLM 1 isteği 30 saniyede işliyorsa, 100 istek göndermek tüm sistemi kilitlememeli.
+
+### Gün 19 — Cache + **Cache Invalidation Strategies**
+- **Ekleme:** Redis'te analiz sonucu cache'lenirken **TTL + versioning** kullanılır. "Model versiyonu değişirse cache temizlenir" mantığı kurulur.
+- **Self-Training Bağlamı:** Model fine-tune edildikten sonra eski cache'li cevaplar invalid olmalı.
+
+### Gün 20 — Async İşlem + **Outbox Pattern & Event Sourcing**
+- **Ekleme:** RabbitMQ yerine önce **Outbox Pattern** ile PostgreSQL → Debezium (CDC) → Kafka/RabbitMQ akışı kurulur.
+- **Neden:** "Mesaj broker down olursa veri kaybolur mu?" sorusuna transaction garantisiyle cevap verilir.
+
+### Gün 21 — Observability + **Distributed Tracing (OpenTelemetry)**
+- **Ekleme:** Micrometer + Brave/OTel ile `traceId` tüm servislerde (Gateway → Code → AI → vLLM) taşınır. Jaeger/Tempo ile görselleştirme.
+- **Neden:** "8 saniyelik isteğin 6 saniyesi nerede geçti?" sorusuna log okuyarak değil, trace grafiğiyle cevap verilir.
+
+### Gün 22 — Architecture Review + **C4 Model + Fitness Functions**
+- **Ekleme:** C4 diagram dışında **ArchUnit** ile architectural fitness function yazılır. "AI Service hiçbir zaman doğrudan DB'ye erişemez" kuralı test edilir.
+- **Neden:** Mimari kararlar sadece dokümanda değil, CI pipeline'ında otomatik kontrol edilir.
+
+---
+
+## FAZ 5 — Production Düşüncesi *(Gün 23-27)*
+
+### Gün 23 — Integration Test + **Testcontainers & Database per Test**
+- **Ekleme:** Her test kendi PostgreSQL + Redis + RabbitMQ container'ını ayağa kaldırır. Testcontainers ile izole edilir.
+- **Neden:** "Benim local'imde çalışıyor" yanılgısı ortadan kalkar.
+
+### Gün 24 — Docker + **Multi-Stage Build & Distroless Image**
+- **Ekleme:** Spring Boot jar'ı `eclipse-temurin:17-jre-alpine` veya distroless imaja paketlenir. Image boyutu ve attack surface minimize edilir.
+- **Neden:** Production imajı 500MB olmamalı; 80MB olmalı.
+
+### Gün 25 — Performance + **Profiling (JFR & async-profiler)**
+- **Ekleme:** k6 veya Gatling ile load test yapılırken, **async-profiler** ile JVM flame graph çıkarılır. Allocation hot-spot'lar bulunur.
+- **Neden:** "Yavaş" demek yetmez; "String concatenation AI Service'te %40 CPU tüketiyor" demek gerekir.
+
+### Gün 26 — Security + **OWASP, mTLS, Secret Management**
+- **Ekleme:** 
+  - Spring Security ile rate limiting ve brute-force koruması.
+  - Servisler arası **mTLS** (mutual TLS) ile sadece Gateway değil, servisler de birbirini doğrular.
+  - Spring Cloud Vault veya Docker Secrets ile DB password/AI API key yönetimi.
+  - OWASP ZAP ile basit penetration test.
+- **Neden:** AI sistemlerinde prompt injection yanında, geleneksel güvenlik de unutulmamalı.
+
+### Gün 27 — CI/CD + **GitOps & Security Scanning**
+- **Ekleme:** GitHub Actions'da:
+  1. SonarQube static analysis
+  2. Trivy/Snyk container vulnerability scan
+  3. Pact contract verification
+  4. ArgoCD'ye otomatik deploy (GitOps)
+- **Neden:** "Build et, test et, deploy et" değil; "güvenli mi, sağlıklı mı, contract bozulmadı mı?" kontrolü şart.
+
+---
+
+## FAZ 6 — Projeyi Sahiplenmek *(Gün 28-30)*
+
+### Gün 28 — ADR'ler + **Runbook & Incident Response**
+- **Ekleme:** Sadece ADR değil; "vLLM 502 verirse ne yapılır?" runbook'u yazılır. On-call simülasyonu yapılır.
+- **Neden:** Mühendislik, karar almak değil; kararın operasyonel sonucunu yönetebilmektir.
+
+### Gün 29 — C4 Model + **SLI/SLO/SLA Tanımları**
+- **Ekleme:** "AI analizi endpoint'i %99.9 availability, p99 latency < 3s" gibi SLO'lar tanımlanır. Grafana dashboard mock'lanır.
+- **Neden:** Sistemi çizen mühendis, onun ne kadar "iyi" olduğunu da sayılarla ifade edebilmelidir.
+
+### Gün 30 — Final Demo + **Chaos & Recovery Demo**
+- **Ekleme:** 
+  1. vLLM kill et → Circuit breaker devreye girer.
+  2. Redis flush et → Cache miss, DB'ye düşer ama sistem ayakta kalır.
+  3. PostgreSQL read replica'ya geçiş simülasyonu.
+  4. **"Bugün yeniden yapsam?"** sorusuna cevap: Event Sourcing + CQRS eklerdim.
+
+---
+
+# 🆕 FAZ 7 — AI Engineering & Continuous Learning *(Gün 31-35)*
+
+> **Amaç:** AI artık harici bir black-box değil; sistem kendi kendini besleyen, değerlendiren ve iyileştiren bir loop'a dönüşür.
+
+### Gün 31 — RAG (Retrieval Augmented Generation)
+- **pgvector** ile PostgreSQL'e vektör uzayı eklenir.
+- Java kodu embedding'e çevrilir (sentence-transformers/all-MiniLM-L6-v2).
+- Benzer kodlar geçmiş analizlerden getirilir; LLM context'i zenginleştirilir.
+- **Mühendislik Dersi:** "Neden ayrı bir Vector DB değil de pgvector?" → Operational complexity trade-off'u.
+
+### Gün 32 — Feedback Loop & Data Pipeline
+- Kullanıcı AI cevabını rate eder (👍/👎) veya düzeltir.
+- Bu veri `feedback` tablosunda toplanır.
+- Haftalık "feedback aggregation" job'u yazılır (Spring Batch veya basit cron).
+- **Self-Training:** "Modelin hata yaptığı input'ları tespit et ve dataset haline getir."
+
+### Gün 33 — AI Evaluation Metrics & LLM-as-a-Judge
+- **BLEU/ROUGE** (basit overlap metrikleri) ve **LLM-as-a-Judge** (daha büyük model ile çıktı değerlendirme) pipeline'ı kurulur.
+- Öğrenci, AI'nın verdiği cevapları otomatik olarak puanlayan bir "eval service" yazar.
+- **Neden:** "Model v2 mi v1'den iyi?" sorusu göz kararı değil, metrikle cevaplanır.
+
+### Gün 34 — Fine-Tuning Pipeline (LoRA/QLoRA)
+- Toplanan feedback verisi ile **PEFT (LoRA)** fine-tuning pipeline'ı kurulur.
+- vLLM üzerinde çalışan model, periyodik olarak yeni adaptörlerle güncellenir.
+- Java tarafından bu adaptör değişimi hot-swap edilir (vLLM model load/unload API).
+- **Self-Training:** Sistem artık sadece AI kullanmıyor; AI'yi besliyor.
+
+### Gün 35 — A/B Testing for Models & Prompts
+- **Feature Flags** (Unleash veya basit DB tabanlı) ile kullanıcıların %50'si yeni modele, %50'si eski modele gider.
+- Conversion metric: "Kullanıcı yeni cevabı daha çok beğendi mi?"
+- **Mühendislik Dersi:** Machine Learning'de "deploy" değil, "experiment" kültürü.
+
+---
+
+# 🆕 FAZ 8 — Platform Engineering & SRE *(Gün 36-40)*
+
+> **Amaç:** Öğrenci kod yazan değil, **sistem kuran ve sistemi gözlemleyen** mühendis olur.
+
+### Gün 36 — Kubernetes & Helm
+- Docker Compose'dan **Kubernetes** manifestlerine geçiş.
+- Helm chart yazılır (Gateway, Code Service, AI Service, vLLM ayrı pod'lar).
+- Resource limits, HPA (Horizontal Pod Autoscaler), liveness/readiness probe'lar tanımlanır.
+
+### Gün 37 — Service Mesh (Istio/Linkerd) & mTLS
+- Servisler arası traffic management, circuit breaker (mesh seviyesinde), observability.
+- mTLS otomatik olarak mesh tarafından sağlanır.
+- **Neden:** Uygulama koduna resilience4j eklemek yerine, infrastructure seviyesinde de çözüm olduğunu görmek.
+
+### Gün 38 — GitOps (ArgoCD) & Blue-Green Deployment
+- ArgoCD ile Git repo'daki manifest değişiklikleri otomatik cluster'a yansır.
+- Blue-green deployment ile yeni AI model versiyonu sıfır downtime ile deploy edilir.
+- **Neden:** "Deploy yaparken kullanıcı etkilenir mi?" sorusuna teknik cevap.
+
+### Gün 39 — Cost Optimization & Resource Tuning
+- vLLM GPU utilization metriklerini inceleme (nvidia-smi, DCGM).
+- Spot instance/preemptible VM kavramları.
+- Java servislerinin memory limitleri ve GC tuning (G1GC vs ZGC).
+- **Neden:** "Bu sistem ayda ne kadara mal olur?" sorusuna cevap verebilmek.
+
+### Gün 40 — Final SRE Review & Post-Mortem
+- Öğrenci kendi sistemine **post-mortem** yazar: "Geçen hafta vLLM OOM oldu, neden? Root cause? Action items?"
+- **Golden Signals** (Latency, Traffic, Errors, Saturation) dashboard'ı yorumlanır.
+- Son soru: **"Bu sistemi 1000 kullanıcıya çıkarırsam, ilk yatırımım ne olur?"** (Cevap: Observability ve caching, değil yeni feature.)
+
+---
+
+# 📋 Yeni Başarı Kriterleri (Self-Training & Engineering Odaklı)
+
+Mevcut 10 soruya şunlar eklenir:
+
+11. **AI cevabını nasıl değerlendiriyorsun?** (LLM-as-a-Judge pipeline'ın var mı?)
+12. **Kullanıcı "bu cevap yanlış" dediğinde bu veri nereye gidiyor?** (Feedback loop çalışıyor mu?)
+13. **Aynı kod için farklı prompt versiyonlarından hangisi daha iyi?** (A/B test ve metrikle kanıtlıyor musun?)
+14. **Modeli yeniden eğitmeden nasıl güncelliyorsun?** (LoRA adaptör swap yapabiliyor musun?)
+15. **Servisler arası iletişimde veri kaybı olur mu?** (Outbox pattern + CDC kullanıyor musun?)
+16. **"8 saniyelik isteğin" 5 saniyesi nerede?** (Distributed trace ile gösterebiliyor musun?)
+17. **Bir servisi deploy ederken kullanıcı etkilenir mi?** (Blue-green / canary yapabiliyor musun?)
+18. **Sistemin aylık maliyeti nedir ve nereden kısabilirsin?** (Cost-aware engineering)
+19. **Bir güvenlik açığı çıktığında secret'ları rotate edebilir misin?** (Vault + dynamic secret)
+20. **Bugün sistemi yeniden kursan, hangi 3 kararı değiştirirdin ve neden?** (Gerçek trade-off düşüncesi)
+
+---
+
+# 🧠 Öğrencinin Her Gün Üretmesi Gereken Yeni Çıktılar
+
+| Gün | Kod | Test | Doküman | Metrik/Veri |
+|-----|-----|------|---------|-------------|
+| 1-5 | ✅ | Unit + Mutation | RFC, ADR-001 | JVM metrics |
+| 6-10 | ✅ | Contract (Pact) | API Spec, ADR-002 | Latency baseline |
+| 11-16 | ✅ | AI Output Validation | Prompt Registry, ADR-003 | Token cost, Judge score |
+| 17-22 | ✅ | Chaos Test | Runbook draft, ADR-004 | Error budget, Trace ID |
+| 23-27 | ✅ | Integration (Testcontainers) | GitOps repo, ADR-005 | Security scan report |
+| 28-30 | ✅ | E2E | C4 + SLO, ADR-006 | Availability % |
+| 31-35 | ✅ | Eval pipeline | RAG Design, ADR-007 | Feedback dataset size |
+| 36-40 | ✅ | Load (k6/Gatling) | Post-mortem, ADR-008 | Cost per request |
+
+---
+
+# 🎯 Altın Kuralın Güncellenmesi
+
+> Her yeni teknoloji için 4 soru yeterli değil. **AI/ML component'leri için 6. soru** eklenmeli:
+
+### 5. Bu veriyi topluyor muyuz ve modeli nasıl besleyeceğiz?
+### 6. Bu AI component'in çıktısını nasıl değerlendiriyoruz ve ne zaman rollback yaparız?
+
+**Örnek:**
+> "Fine-tuning yapalım."
+- Neden? (Kullanıcı feedback'i birikti, model hataları tekrar ediyor.)
+- Mevcut çözümle neden olmuyor? (Prompt engineering ile düzelmiyor, sistematik bias var.)
+- Ne kazandırıyor? (Daha yüksek kullanıcı memnuniyeti, düşük token maliyeti.)
+- Ne kaybediyoruz? (Overfitting riski, eğitim maliyeti, eski yeteneklerin unutulması - catastrophic forgetting.)
+- Veriyi topluyor muyuz? (Evet, `feedback` tablosunda 10K örnek var, human-verified.)
+- Nasıl değerlendireceğiz? (LLM-as-a-Judge pipeline ile v1 ve v2 karşılaştırması, A/B test 2 hafta.)
+
+---
+
+Bu revizyonla öğrenci, 30 (veya 40) günün sonunda sadece **"çalışan bir demo"** değil; **kendi AI'sini besleyebilen, operasyonel olaylara cevap verebilen, maliyetini hesaplayabilen ve mimari kararlarını veriyle destekleyebilen** bir mühendis adayı olur. 
+
+İstersen bu planın **Gantt chart'ını**, **teknik stack detaylarını** veya **her gün için örnek GitHub commit mesajlarını** da ayrıca çıkarabilirim.
