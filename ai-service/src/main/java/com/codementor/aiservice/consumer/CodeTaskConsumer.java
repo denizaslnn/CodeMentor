@@ -1,36 +1,86 @@
 package com.codementor.aiservice.consumer;
 
 import com.codementor.aiservice.dto.CodeTaskMessage;
+import com.codementor.aiservice.entity.AnalysisRequest;
+import com.codementor.aiservice.repository.AnalysisRepository;
 import com.codementor.aiservice.service.RedisStatusService;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class CodeTaskConsumer {
 
+    private final AnalysisRepository repository;
     private final RedisStatusService redisStatusService;
 
-    public CodeTaskConsumer(RedisStatusService redisStatusService) {
+    public CodeTaskConsumer(AnalysisRepository repository, RedisStatusService redisStatusService) {
+        this.repository = repository;
         this.redisStatusService = redisStatusService;
     }
 
     @RabbitListener(queues = "${rabbitmq.queue.name}")
-    public void consumeMessage(CodeTaskMessage message) {
-        System.out.println("📩 [ai-service] Kuyruktan mesaj alındı! Task ID: " + message.getTaskId());
+        public void consumeMessage(CodeTaskMessage message) {
+            String taskId = message.getTaskId();
 
-        // 1. Durumu "PROCESSING" olarak güncelle
-        redisStatusService.updateTaskStatus(message.getTaskId(), "PROCESSING");
+            // Try to find the DB record with retries to handle slight commit delays
+            final int maxAttempts = 6;
+            final long waitMs = 250L;
+            AnalysisRequest request = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                request = repository.findById(taskId).orElse(null);
+                if (request != null) break;
+                try {
+                    Thread.sleep(waitMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
 
-        // 2. Yapay Zeka analiz simülasyonu (Gerçek LLM entegrasyonu öncesi 3 sn gecikme)
-        try {
-            Thread.sleep(3000); // Yapay zeka kodu analiz ediyor gibi simüle ediyoruz
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            if (request == null) {
+                System.err.println("Geçersiz mesaj, kuyruktan düşürülüyor: Task DB'de bulunamadı: " + taskId);
+                throw new AmqpRejectAndDontRequeueException("Task DB'de bulunamadı: " + taskId);
+            }
+
+            try {
+                redisStatusService.updateTaskStatus(taskId, "PROCESSING");
+
+                String aiResult = executeAiAnalysis(request.getSourceCode(), request.getPrompt());
+
+                redisStatusService.updateTaskStatus(taskId, "COMPLETED");
+
+                // Update DB in a transactional helper to avoid long-lived consumer transaction
+                updateDbResult(taskId, aiResult);
+
+                System.out.println("✅ [ai-service] Analiz tamamlandı. Task ID: " + taskId);
+
+            } catch (Exception e) {
+                System.err.println("AI Analizi sırasında hata oluştu. TaskID: " + taskId + " | " + e.getMessage());
+                redisStatusService.updateTaskStatus(taskId, "FAILED");
+                updateDbStatus(taskId, "FAILED");
+                throw new AmqpRejectAndDontRequeueException("Sistem hatası nedeniyle mesaj düşürülüyor.", e);
+            }
         }
 
-        // 3. Analiz bitti! Durumu Redis'e "COMPLETED" olarak yaz
-        redisStatusService.updateTaskStatus(message.getTaskId(), "COMPLETED - Kod analizi başarıyla tamamlandı.");
+    private String executeAiAnalysis(String sourceCode, String prompt) {
+        return "Kod analizi başarılı: Temiz görünüyor.";
+    }
 
-        System.out.println("✅ [ai-service] Analiz tamamlandı. Task ID: " + message.getTaskId());
+    @Transactional
+    protected void updateDbResult(String taskId, String aiResult) {
+        repository.findById(taskId).ifPresent(request -> {
+            request.setStatus("COMPLETED");
+            request.setAiResponse(aiResult);
+            repository.save(request);
+        });
+    }
+
+    private void updateDbStatus(String taskId, String status) {
+        repository.findById(taskId).ifPresent(request -> {
+            request.setStatus(status);
+            repository.save(request);
+        });
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMQConfig {
 
     @Bean
+    @SuppressWarnings("deprecation")
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
     }

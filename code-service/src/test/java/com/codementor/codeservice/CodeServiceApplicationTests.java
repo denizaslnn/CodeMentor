@@ -1,4 +1,4 @@
-package microservices.codeservice;
+package com.codementor.codeservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
