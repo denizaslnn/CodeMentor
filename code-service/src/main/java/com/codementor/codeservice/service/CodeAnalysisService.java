@@ -9,9 +9,11 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.codementor.codeservice.publisher.TaskEventPublisher;
+import com.codementor.codeservice.exception.ResourceNotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.Objects;
 
 @Service
 public class CodeAnalysisService {
@@ -31,6 +33,7 @@ public class CodeAnalysisService {
 
         AnalysisRequest request = new AnalysisRequest();
         request.setId(taskId);
+        Objects.requireNonNull(requestDto.getSourceCode(), "sourceCode must not be null");
         request.setSourceCode(requestDto.getSourceCode());
         request.setPrompt(requestDto.getPrompt());
         request.setStatus("PENDING");
@@ -42,5 +45,10 @@ public class CodeAnalysisService {
         taskEventPublisher.publishTaskCreated(new com.codementor.codeservice.event.TaskCreatedEvent(taskId, requestDto.getSourceCode(), requestDto.getPrompt()));
 
         return taskId;
+    }
+
+    public AnalysisRequest getAnalysisById(String id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Aradığınız ID'ye ait bir analiz kaydı bulunamadı: " + id));
     }
 }
