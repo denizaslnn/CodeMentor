@@ -17,6 +17,7 @@ spring:
     show-sql: false
     properties:
       hibernate:
+        show_sql: false
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
   rabbitmq:
@@ -39,6 +40,7 @@ rabbitmq:
 
 logging:
   level:
-    org.hibernate.SQL: WARN
+    org.hibernate.SQL: OFF
+    org.hibernate.engine.jdbc.spi.SqlStatementLogger: OFF
     org.hibernate.type.descriptor.sql.BasicBinder: OFF
     p6spy: DEBUG
