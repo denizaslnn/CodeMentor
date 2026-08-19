@@ -15,7 +15,6 @@ import java.time.LocalDateTime;
 public class AnalysisRequest {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
     @Column(columnDefinition = "TEXT", nullable = false)
