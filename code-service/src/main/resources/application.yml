@@ -10,7 +10,7 @@ spring:
     username: postgres
     # docker-compose'daki POSTGRES_PASSWORD: postgres_password ile uyumlu olmalı
     password: postgres_password
-    driver-class-name: org.postgresql.Driver
+    driver-class-name: com.p6spy.engine.spy.P6SpyDriver
   jpa:
     hibernate:
       ddl-auto: update
