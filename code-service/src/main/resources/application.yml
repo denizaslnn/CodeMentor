@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8084
 
 spring:
@@ -6,7 +6,7 @@ spring:
     name: code-service
   datasource:
     # docker-compose'daki POSTGRES_DB: code_analysis_db ile uyumlu olmalı
-    url: jdbc:postgresql://localhost:5432/code_analysis_db
+    url: jdbc:p6spy:postgresql://localhost:5432/code_analysis_db
     username: postgres
     # docker-compose'daki POSTGRES_PASSWORD: postgres_password ile uyumlu olmalı
     password: postgres_password
@@ -36,3 +36,8 @@ rabbitmq:
   result:
     queue: code.result.queue
     routingkey: code.result.routing-key
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
