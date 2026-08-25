@@ -17,6 +17,8 @@ spring:
               uri: http://localhost:8084
               predicates:
                 - Path=/api/v1/**
+              filters:
+                - name: JwtAuthentication
           globalcors:
             cors-configurations:
               '[/**]':
@@ -30,6 +32,10 @@ spring:
 
 # Prompt/AI (kod analiz) endpointi icin rate limiter ayarlari
 # RedisRateLimiter bean'i (RateLimiterConfig) tarafindan kullanilir
+jwt:
+  # 256-bit (32-byte) base64-encoded secret key. Change to a secure random key for production.
+  secret: a2V5MTIzNDU2Nzg5MTIzNDU2Nzg5MTIzNDU2Nzg5MTI=
+
 code-mentor:
   rate-limiter:
     replenish-rate: 2    # saniyede kovaya eklenen token
@@ -44,7 +50,8 @@ management:
 
 logging:
   level:
-    org.springframework.cloud.gateway: TRACE
+    org.springframework.cloud.gateway: DEBUG
+    reactor.netty.http.client: DEBUG
     org.springframework.data.redis: DEBUG
     org.hibernate.SQL: debug
     org.hibernate.type.descriptor.sql.BasicBinder: trace

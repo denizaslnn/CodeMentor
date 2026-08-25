@@ -1,9 +1,11 @@
 package com.codementor.aiservice.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class RedisStatusService {
 
     private final RedisTemplate<String, String> redisTemplate;
@@ -17,7 +19,7 @@ public class RedisStatusService {
         try {
             redisTemplate.opsForValue().set(KEY_PREFIX + taskId, status);
         } catch (Exception e) {
-            System.err.println("⚠️ [ai-service] Redis güncelleme hatası (taskId=" + taskId + "): " + e.getMessage());
+            log.error("Redis durum güncellemesi başarısız. taskId={}, status={}, error={}", taskId, status, e.getMessage(), e);
         }
     }
 
@@ -25,7 +27,7 @@ public class RedisStatusService {
         try {
             redisTemplate.opsForValue().set(KEY_PREFIX + taskId, "COMPLETED:" + result);
         } catch (Exception e) {
-            System.err.println("⚠️ [ai-service] Redis güncelleme hatası (taskId=" + taskId + "): " + e.getMessage());
+            log.error("Redis tamamlanma sonucu kaydı başarısız. taskId={}, error={}", taskId, e.getMessage(), e);
         }
     }
 }

@@ -1,16 +1,18 @@
 package com.codementor.codeservice.publisher;
 
-import com.codementor.codeservice.event.TaskCreatedEvent;
 import com.codementor.codeservice.CodeTaskMessage;
+import com.codementor.codeservice.event.TaskCreatedEvent;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.event.TransactionPhase;
 
 @Component
+@Slf4j
 public class RabbitMqTaskPublisher {
 
     private final RabbitTemplate rabbitTemplate;
@@ -37,11 +39,11 @@ public class RabbitMqTaskPublisher {
         try {
             redisTemplate.opsForValue().set("task:" + taskId, "PENDING");
         } catch (Exception e) {
-            System.err.println("Redis set failed in TaskCreated listener: " + e.getMessage());
+            log.error("Redis başlangıç durumu kaydı başarısız. taskId={}, error={}", taskId, e.getMessage(), e);
         }
 
         CodeTaskMessage msg = new CodeTaskMessage(taskId, event.getSourceCode(), event.getPrompt());
-        System.out.println("[TransactionalEventListener] Publishing task to RabbitMQ: " + taskId);
+        log.info("RabbitMQ task yayınlanıyor. taskId={}", taskId);
         rabbitTemplate.convertAndSend(exchange, routingKey, msg);
     }
 }

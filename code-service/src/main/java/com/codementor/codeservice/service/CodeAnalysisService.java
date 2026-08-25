@@ -1,18 +1,15 @@
 package com.codementor.codeservice.service;
 
-import com.codementor.codeservice.CodeTaskMessage;
 import com.codementor.codeservice.dto.CodeRequestDto;
 import com.codementor.codeservice.entity.AnalysisRequest;
+import com.codementor.codeservice.exception.ResourceNotFoundException;
+import com.codementor.codeservice.publisher.TaskEventPublisher;
 import com.codementor.codeservice.repository.AnalysisRepository;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.data.redis.core.RedisTemplate;
+import com.github.f4b6a3.uuid.UuidCreator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.codementor.codeservice.publisher.TaskEventPublisher;
-import com.codementor.codeservice.exception.ResourceNotFoundException;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 import java.util.Objects;
 
 @Service
@@ -29,7 +26,7 @@ public class CodeAnalysisService {
 
     @Transactional
     public String initiateAnalysis(CodeRequestDto requestDto) {
-        String taskId = UUID.randomUUID().toString();
+        String taskId = UuidCreator.getTimeOrdered().toString();
 
         AnalysisRequest request = new AnalysisRequest();
         request.setId(taskId);

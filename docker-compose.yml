@@ -1,22 +1,4 @@
-version: '3.8'
-
 services:
-  redis:
-    image: redis:alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"   # Uygulamanın bağlanacağı port
-      - "15672:15672" # Tarayıcıdan izleyeceğimiz panel portu
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-
   postgres:
     image: postgres:16-alpine
     container_name: postgres_db
@@ -26,3 +8,139 @@ services:
       POSTGRES_PASSWORD: postgres_password
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d code_analysis_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - codementor-net
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - codementor-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - codementor-net
+
+  code-service:
+    build:
+      context: ./code-service
+      dockerfile: Dockerfile
+    container_name: code-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8084
+      SPRING_DATASOURCE_URL: jdbc:p6spy:postgresql://postgres:5432/code_analysis_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.p6spy.engine.spy.P6SpyDriver
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      RABBITMQ_EXCHANGE: code-exchange
+      RABBITMQ_QUEUE: code.analysis.queue
+      RABBITMQ_ROUTINGKEY: code-routing-key
+      RABBITMQ_RESULT_QUEUE: code.result.queue
+      RABBITMQ_RESULT_ROUTINGKEY: code.result.routing-key
+    ports:
+      - "8084:8084"
+    networks:
+      - codementor-net
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: ai-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:p6spy:postgresql://postgres:5432/code_analysis_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.p6spy.engine.spy.P6SpyDriver
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      RABBITMQ_EXCHANGE: code-exchange
+      RABBITMQ_ROUTINGKEY: code-routing-key
+      RABBITMQ_QUEUE_NAME: code.analysis.queue
+      RABBITMQ_RESULT_EXCHANGE: code-exchange
+      RABBITMQ_RESULT_QUEUE: code.result.queue
+      RABBITMQ_RESULT_ROUTINGKEY: code.result.routing-key
+    ports:
+      - "8083:8083"
+    networks:
+      - codementor-net
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    depends_on:
+      code-service:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_ROUTES_0_URI: http://code-service:8084
+      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_ROUTES_0_PREDICATES_0: Path=/api/v1/**
+      CODE_MENTOR_RATE_LIMITER_REPLENISH_RATE: 2
+      CODE_MENTOR_RATE_LIMITER_BURST_CAPACITY: 5
+      CODE_MENTOR_RATE_LIMITER_REQUESTED_TOKENS: 1
+    ports:
+      - "8080:8080"
+    networks:
+      - codementor-net
+
+networks:
+  codementor-net:
+    driver: bridge

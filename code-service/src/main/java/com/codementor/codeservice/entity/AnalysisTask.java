@@ -1,7 +1,9 @@
 package com.codementor.codeservice.entity;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.util.UUID;
 
 @Entity
@@ -14,8 +16,14 @@ import java.util.UUID;
 public class AnalysisTask {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @PrePersist
+    public void generateId() {
+        if (this.id == null) {
+            this.id = UuidCreator.getTimeOrdered();
+        }
+    }
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String code;

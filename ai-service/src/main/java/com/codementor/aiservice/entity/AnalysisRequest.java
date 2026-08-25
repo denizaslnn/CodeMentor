@@ -1,5 +1,6 @@
 package com.codementor.aiservice.entity;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -17,6 +18,13 @@ public class AnalysisRequest {
     @Id
     @Column(nullable = false, updatable = false)
     private String id;
+
+    @PrePersist
+    public void generateId() {
+        if (this.id == null || this.id.isBlank()) {
+            this.id = UuidCreator.getTimeOrdered().toString();
+        }
+    }
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String sourceCode;
