@@ -1,0 +1,11 @@
+### 1. İstek: Kod Analiz Talebi Gönder (POST)
+POST http://localhost:8080/api/v1/analyze
+Content-Type: application/json
+
+{
+  "prompt": "Bu koddaki performans sorununu bul ve optimize et.",
+  "sourceCode": "public class Test { public static void main(String[] args) { System.out.println(\"Hello\"); } }"
+}
+
+### 2. İstek: Görev Durumunu Sorgula (GET - Polling)
+GET http://localhost:8080/api/v1/status/PASTE_YOUR_TASK_ID_HERE

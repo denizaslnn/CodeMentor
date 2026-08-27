@@ -10,6 +10,7 @@ public class RedisStatusService {
 
     private final StringRedisTemplate redisTemplate;
     private static final String KEY_PREFIX = "task:";
+    private static final String RESULT_SUFFIX = ":result";
 
     public RedisStatusService(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
@@ -23,5 +24,9 @@ public class RedisStatusService {
     // Görev durumunu Redis'ten getir
     public String getTaskStatus(String taskId) {
         return redisTemplate.opsForValue().get(KEY_PREFIX + taskId);
+    }
+
+    public String getTaskResult(String taskId) {
+        return redisTemplate.opsForValue().get(KEY_PREFIX + taskId + RESULT_SUFFIX);
     }
 }

@@ -1,8 +1,10 @@
 package com.codementor.codeservice.service;
 
 import com.codementor.codeservice.dto.CodeRequestDto;
+import com.codementor.codeservice.dto.TaskStatusResponseDto;
 import com.codementor.codeservice.entity.AnalysisRequest;
 import com.codementor.codeservice.exception.ResourceNotFoundException;
+import com.codementor.codeservice.exception.TaskNotFoundException;
 import com.codementor.codeservice.publisher.TaskEventPublisher;
 import com.codementor.codeservice.repository.AnalysisRepository;
 import com.github.f4b6a3.uuid.UuidCreator;
@@ -17,11 +19,14 @@ public class CodeAnalysisService {
 
     private final AnalysisRepository repository;
     private final TaskEventPublisher taskEventPublisher;
+    private final RedisStatusService redisStatusService;
 
     public CodeAnalysisService(AnalysisRepository repository,
-                               TaskEventPublisher taskEventPublisher) {
+                               TaskEventPublisher taskEventPublisher,
+                               RedisStatusService redisStatusService) {
         this.repository = repository;
         this.taskEventPublisher = taskEventPublisher;
+        this.redisStatusService = redisStatusService;
     }
 
     @Transactional
@@ -47,5 +52,38 @@ public class CodeAnalysisService {
     public AnalysisRequest getAnalysisById(String id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Aradığınız ID'ye ait bir analiz kaydı bulunamadı: " + id));
+    }
+
+    public TaskStatusResponseDto getTaskStatus(String taskId) {
+        String redisStatus = redisStatusService.getTaskStatus(taskId);
+        if (redisStatus != null) {
+            return toResponseFromRedis(taskId, redisStatus);
+        }
+
+        AnalysisRequest request = repository.findById(taskId)
+                .orElseThrow(() -> new TaskNotFoundException("Görev bulunamadı: " + taskId));
+
+        return new TaskStatusResponseDto(taskId, request.getStatus(), request.getAiResponse());
+    }
+
+    private TaskStatusResponseDto toResponseFromRedis(String taskId, String redisStatusValue) {
+        int separatorIndex = redisStatusValue.indexOf(':');
+        if (separatorIndex > 0) {
+            String status = redisStatusValue.substring(0, separatorIndex);
+            String result = redisStatusValue.substring(separatorIndex + 1);
+            return new TaskStatusResponseDto(taskId, status, result);
+        }
+
+        if ("COMPLETED".equals(redisStatusValue)) {
+            String redisResult = redisStatusService.getTaskResult(taskId);
+            if (redisResult != null) {
+                return new TaskStatusResponseDto(taskId, redisStatusValue, redisResult);
+            }
+
+            AnalysisRequest request = repository.findById(taskId).orElse(null);
+            return new TaskStatusResponseDto(taskId, redisStatusValue, request != null ? request.getAiResponse() : null);
+        }
+
+        return new TaskStatusResponseDto(taskId, redisStatusValue, null);
     }
 }

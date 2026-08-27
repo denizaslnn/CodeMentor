@@ -18,7 +18,7 @@ spring:
               predicates:
                 - Path=/api/v1/**
               filters:
-                - name: JwtAuthentication
+                - name: JwtAuthenticationFilter
           globalcors:
             cors-configurations:
               '[/**]':

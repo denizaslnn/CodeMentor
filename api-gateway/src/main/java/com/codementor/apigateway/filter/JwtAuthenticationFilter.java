@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -17,22 +16,30 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAuthenticationFilter.Config> {
 
-    private final JwtUtil jwtUtil;
+    private static final String WHITELISTED_PATH = "/api/v1/get-token";
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+    private final JwtUtil jwtUtil;
+    private final UnauthorizedResponseWriter unauthorizedResponseWriter;
+
+    public JwtAuthenticationFilter(JwtUtil jwtUtil, UnauthorizedResponseWriter unauthorizedResponseWriter) {
         super(Config.class);
         this.jwtUtil = jwtUtil;
+        this.unauthorizedResponseWriter = unauthorizedResponseWriter;
     }
 
     @Override
     public GatewayFilter apply(Config config) {
         return (exchange, chain) -> {
+            // Whitelisted test endpoints skip JWT validation
+            if (WHITELISTED_PATH.equals(exchange.getRequest().getPath().value())) {
+                return chain.filter(exchange);
+            }
+
             String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 log.warn("Authorization header missing or invalid format");
-                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                return exchange.getResponse().setComplete();
+                return unauthorizedResponseWriter.write(exchange, "Authorization header missing or invalid format.");
             }
 
             String token = authHeader.substring(7);
@@ -52,8 +59,7 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
 
             } catch (JwtException ex) {
                 log.error("JWT validation failed: {}", ex.getMessage());
-                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                return exchange.getResponse().setComplete();
+                return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
             }
         };
     }

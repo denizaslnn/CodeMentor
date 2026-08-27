@@ -16,7 +16,6 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,6 +30,7 @@ class JwtAuthenticationFilterTest {
     void validToken_isAccepted_andAddsXUserIdHeader() {
         JwtUtil jwtUtil = new JwtUtil(SECRET_B64);
         jwtUtil.init();
+        UnauthorizedResponseWriter unauthorizedResponseWriter = new UnauthorizedResponseWriter();
 
         String token = buildToken(jwtUtil, "user-42", new Date(System.currentTimeMillis() + 60_000));
 
@@ -48,7 +48,7 @@ class JwtAuthenticationFilterTest {
             return Mono.empty();
         };
 
-        new JwtAuthenticationFilter(jwtUtil).apply(new JwtAuthenticationFilter.Config())
+        new JwtAuthenticationFilter(jwtUtil, unauthorizedResponseWriter).apply(new JwtAuthenticationFilter.Config())
                 .filter(exchange, chain)
                 .block();
 
@@ -60,6 +60,7 @@ class JwtAuthenticationFilterTest {
     void invalidToken_returns401_andStopsChain() {
         JwtUtil jwtUtil = new JwtUtil(SECRET_B64);
         jwtUtil.init();
+        UnauthorizedResponseWriter unauthorizedResponseWriter = new UnauthorizedResponseWriter();
 
         String invalidToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTQyIn0.invalid";
 
@@ -76,7 +77,7 @@ class JwtAuthenticationFilterTest {
             return Mono.empty();
         };
 
-        new JwtAuthenticationFilter(jwtUtil).apply(new JwtAuthenticationFilter.Config())
+        new JwtAuthenticationFilter(jwtUtil, unauthorizedResponseWriter).apply(new JwtAuthenticationFilter.Config())
                 .filter(exchange, chain)
                 .block();
 
@@ -88,6 +89,7 @@ class JwtAuthenticationFilterTest {
     void expiredToken_isRejected() {
         JwtUtil jwtUtil = new JwtUtil(SECRET_B64);
         jwtUtil.init();
+        UnauthorizedResponseWriter unauthorizedResponseWriter = new UnauthorizedResponseWriter();
 
         String expiredToken = buildToken(jwtUtil, "expired-user", new Date(System.currentTimeMillis() - 60_000));
 
@@ -97,7 +99,7 @@ class JwtAuthenticationFilterTest {
 
         ServerWebExchange exchange = MockServerWebExchange.from(request);
 
-        new JwtAuthenticationFilter(jwtUtil).apply(new JwtAuthenticationFilter.Config())
+        new JwtAuthenticationFilter(jwtUtil, unauthorizedResponseWriter).apply(new JwtAuthenticationFilter.Config())
                 .filter(exchange, mockedExchange -> Mono.empty())
                 .block();
 

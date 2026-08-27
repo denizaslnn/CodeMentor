@@ -9,7 +9,6 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -24,15 +23,23 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class JwtGlobalFilter implements GlobalFilter, Ordered {
 
-    private final JwtUtil jwtUtil;
+    private static final String WHITELISTED_PATH = "/api/v1/get-token";
 
-    public JwtGlobalFilter(JwtUtil jwtUtil) {
+    private final JwtUtil jwtUtil;
+    private final UnauthorizedResponseWriter unauthorizedResponseWriter;
+
+    public JwtGlobalFilter(JwtUtil jwtUtil, UnauthorizedResponseWriter unauthorizedResponseWriter) {
         this.jwtUtil = jwtUtil;
+        this.unauthorizedResponseWriter = unauthorizedResponseWriter;
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
+        // Whitelisted test endpoints (e.g. token generation for local testing) skip JWT validation
+        if (WHITELISTED_PATH.equals(path)) {
+            return chain.filter(exchange);
+        }
         // Apply only to API routes
         if (!path.startsWith("/api/v1")) {
             return chain.filter(exchange);
@@ -41,8 +48,7 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.warn("Missing or invalid Authorization header for {}", path);
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+            return unauthorizedResponseWriter.write(exchange, "Authorization header missing or invalid format.");
         }
 
         String token = authHeader.substring(7);
@@ -60,7 +66,6 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
             // make final copies for lambda capture
             final ServerWebExchange finalExchange = exchange;
             final String finalUserId = userId;
-            final ServerHttpRequest finalRequest = request;
 
             // If there is no body, just add header and continue.
             if (contentLength == 0) {
@@ -86,15 +91,14 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
                         };
 
                         ServerHttpRequest mutated = decorated.mutate()
-                                                                .header("X-User-Id", finalUserId != null ? finalUserId : "")
+                                .header("X-User-Id", finalUserId != null ? finalUserId : "")
                                 .build();
 
-                                                        return chain.filter(finalExchange.mutate().request(mutated).build());
+                        return chain.filter(finalExchange.mutate().request(mutated).build());
                     });
         } catch (JwtException ex) {
             log.error("JWT validation failed: {}", ex.getMessage());
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+            return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
         }
     }
 
