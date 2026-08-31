@@ -8,6 +8,9 @@ services:
       POSTGRES_PASSWORD: postgres_password
     ports:
       - "5432:5432"
+    volumes:
+      # Named volume: veri `docker compose down`/restart sonrasi korunur.
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d code_analysis_db"]
       interval: 10s
@@ -143,8 +146,9 @@ services:
       SERVER_PORT: 8080
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_ROUTES_0_URI: http://code-service:8084
-      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_ROUTES_0_PREDICATES_0: Path=/api/v1/**
+      # Routes are declared in the gateway's application.yml; only the upstream
+      # address differs per environment (compose service DNS name here).
+      CODE_SERVICE_URI: http://code-service:8084
       CODE_MENTOR_RATE_LIMITER_REPLENISH_RATE: 2
       CODE_MENTOR_RATE_LIMITER_BURST_CAPACITY: 5
       CODE_MENTOR_RATE_LIMITER_REQUESTED_TOKENS: 1
@@ -161,6 +165,9 @@ services:
       - "8080:8080"
     networks:
       - codementor-net
+
+volumes:
+  postgres_data:
 
 networks:
   codementor-net:

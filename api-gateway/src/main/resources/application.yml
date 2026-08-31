@@ -14,7 +14,7 @@ spring:
         webflux:
           routes:
             - id: code-service
-              uri: http://localhost:8084
+              uri: ${CODE_SERVICE_URI:http://localhost:8084}
               predicates:
                 - Path=/api/v1/**
               filters:
@@ -23,6 +23,13 @@ spring:
                     redis-rate-limiter.replenishRate: 2
                     redis-rate-limiter.burstCapacity: 5
                     key-resolver: "#{@userAwareKeyResolver}"
+            # code-service Swagger UI / OpenAPI dokumani. code-service portu dışa
+            # kapali oldugu icin (X-User-Id spoof korumasi) dokuman yalnizca gateway
+            # uzerinden servis edilir. /api/v1 disinda kaldigi icin JWT istemez.
+            - id: code-service-docs
+              uri: ${CODE_SERVICE_URI:http://localhost:8084}
+              predicates:
+                - Path=/swagger-ui/**,/swagger-ui.html,/v3/api-docs/**,/v3/api-docs
           globalcors:
             cors-configurations:
               '[/**]':

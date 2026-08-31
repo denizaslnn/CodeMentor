@@ -1,6 +1,7 @@
 package com.codementor.codeservice.security;
 
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
@@ -86,7 +87,10 @@ public class JwtTokenProvider {
                 .claim("roles", List.of(role))
                 .setIssuedAt(now)
                 .setExpiration(exp)
-                .signWith(key)
+                // Algorithm is pinned explicitly: signWith(key) alone derives it from the
+                // key length (a 48-byte secret would yield HS384), which the gateway --
+                // pinned to HS256 -- then rejects.
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 

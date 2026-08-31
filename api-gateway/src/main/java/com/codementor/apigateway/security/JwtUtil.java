@@ -4,11 +4,13 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -50,11 +52,17 @@ public class JwtUtil {
     private static final String DEFAULT_AUDIENCE = "api-gateway";
     private static final long DEFAULT_ACCESS_TOKEN_VALIDITY_MS = 15 * 60 * 1000L;
 
-    public JwtUtil(@Value("${jwt.secret}") String base64Secret,
-                   @Value("${jwt.access-token-expiration:900000}") long accessTokenValidityMs) {
+    /** Convenience constructor with the default issuer/audience (tests, local tooling). */
+    public JwtUtil(String base64Secret, long accessTokenValidityMs) {
         this(base64Secret, accessTokenValidityMs, DEFAULT_ISSUER, DEFAULT_AUDIENCE);
     }
 
+    /**
+     * Constructor Spring injects. Explicitly annotated because this class exposes
+     * more than one constructor (the 2-arg one is a convenience used by tests),
+     * and Spring cannot pick a candidate on its own in that case.
+     */
+    @Autowired
     public JwtUtil(@Value("${jwt.secret}") String base64Secret,
                    @Value("${jwt.access-token-expiration:900000}") long accessTokenValidityMs,
                    @Value("${jwt.issuer:" + DEFAULT_ISSUER + "}") String expectedIssuer,
@@ -184,7 +192,7 @@ public class JwtUtil {
                 .claim("roles", List.of(role))
                 .setIssuedAt(now)
                 .setExpiration(exp)
-                .signWith(key)
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -212,7 +220,7 @@ public class JwtUtil {
                 .claim("userId", userId)
                 .setIssuedAt(now)
                 .setExpiration(exp)
-                .signWith(key)
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 }

@@ -14,6 +14,8 @@ import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.sql.SQLException;
 import java.util.stream.Collectors;
@@ -90,6 +92,14 @@ public class GlobalExceptionHandler {
     }
 
     // --- Son durak: hiçbir hata çıplak kalmasın ---
+    // --- Bilinmeyen path: catch-all'a dusup 500 olmamali, 404 donmeli ---
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ApiResponse<Void>> handleNotFound(Exception ex) {
+        log.warn("No handler for request: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(
+                "error.resource.notfound", "NOT_FOUND", 404));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex, HttpServletRequest request) {
         if (isClientAbort(ex)) {

@@ -4,6 +4,12 @@
 spring:
   application:
     name: code-service
+  messages:
+    # Varsayilan dil Turkce (messages.properties). fallback-to-system-locale=false olmadan
+    # bilinmeyen/istenmeyen locale'ler JVM sistem locale'ine (orn. en) dusuyordu.
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
   datasource:
     # docker-compose'daki POSTGRES_DB: code_analysis_db ile uyumlu olmalı
     url: jdbc:p6spy:postgresql://localhost:5432/code_analysis_db
@@ -75,3 +81,16 @@ jwt:
     same-site: ${REFRESH_COOKIE_SAME_SITE:Lax}
     # Cookie yalnizca auth endpoint'lerine gonderilir (minimum exposure).
     path: ${REFRESH_COOKIE_PATH:/api/v1/auth}
+
+# OpenAPI / Swagger UI. Dokuman api-gateway (8080) uzerinden servis edilir.
+# config-url/url explicit verilir ve swagger-ui'nin petstore default'u kapatilir;
+# aksi halde /swagger-ui/index.html'e dogrudan girildiginde UI petstore'a bakiyor
+# (webjar default'u) ve bos aciliyor.
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    config-url: /v3/api-docs/swagger-config
+    url: /v3/api-docs
+    disable-swagger-default-url: true

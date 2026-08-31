@@ -27,4 +27,24 @@ class SecurityHeadersTest {
 
         assertEquals(2, headers.get("X-Frame-Options").size());
     }
+
+    @Test
+    void applyForDocs_usesSwaggerCompatibleCsp() {
+        HttpHeaders headers = new HttpHeaders();
+        SecurityHeaders.applyForDocs(headers);
+
+        assertEquals(SecurityHeaders.DOCS_CSP, headers.getFirst("Content-Security-Policy"));
+        // The rest of the hardening is unchanged.
+        assertEquals(SecurityHeaders.HSTS, headers.getFirst("Strict-Transport-Security"));
+        assertEquals(SecurityHeaders.FRAME_OPTIONS, headers.getFirst("X-Frame-Options"));
+        assertEquals(SecurityHeaders.CONTENT_TYPE_OPTIONS, headers.getFirst("X-Content-Type-Options"));
+    }
+
+    @Test
+    void isDocsPath_matchesOnlyDocumentationPaths() {
+        assertTrue(SecurityHeaders.isDocsPath("/swagger-ui/index.html"));
+        assertTrue(SecurityHeaders.isDocsPath("/v3/api-docs"));
+        assertFalse(SecurityHeaders.isDocsPath("/api/v1/analyze"));
+        assertFalse(SecurityHeaders.isDocsPath("/api/v1/auth/login"));
+    }
 }

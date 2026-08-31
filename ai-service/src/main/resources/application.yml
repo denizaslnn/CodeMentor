@@ -2,6 +2,12 @@ server:
   port: 8083
 
 spring:
+  messages:
+    # Varsayilan dil Turkce (messages.properties). fallback-to-system-locale=false olmadan
+    # bilinmeyen/istenmeyen locale'ler JVM sistem locale'ine (orn. en) dusuyordu.
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
   application:
     name: ai-service
   datasource:

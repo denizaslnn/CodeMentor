@@ -24,7 +24,13 @@ public class SecurityHeadersWebFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange,
                              org.springframework.cloud.gateway.filter.GatewayFilterChain chain) {
-        SecurityHeaders.apply(exchange.getResponse().getHeaders());
+        String path = exchange.getRequest().getPath().value();
+        if (SecurityHeaders.isDocsPath(path)) {
+            // Swagger UI cannot render under the strict API CSP.
+            SecurityHeaders.applyForDocs(exchange.getResponse().getHeaders());
+        } else {
+            SecurityHeaders.apply(exchange.getResponse().getHeaders());
+        }
         return chain.filter(exchange);
     }
 
