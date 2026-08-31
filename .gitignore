@@ -1,0 +1,5 @@
+# Environment secrets — asla commit edilmez.
+# Compose, kök dizindeki `.env` dosyasını otomatik okur.
+.env
+.env.*
+!.env.example

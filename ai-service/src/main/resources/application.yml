@@ -11,7 +11,11 @@ spring:
     driver-class-name: com.p6spy.engine.spy.P6SpyDriver
   jpa:
     hibernate:
-      ddl-auto: update
+      # ai-service owns no Flyway migration of its own; it relies on
+      # code-service's Flyway V1 for the shared schema. `update` validates the
+      # entity mappings without dropping columns (prefer `validate` + the
+      # validate entity mappings against the shared schema.
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -28,19 +32,28 @@ spring:
     username: guest
     password: guest
 
+# Consumer-owned RabbitMQ topology (no result exchange/queue - ai-service
+# persists analysis output to DB + Redis only).
 rabbitmq:
   exchange: code-exchange
   routingkey: code-routing-key
   queue:
     name: code.analysis.queue
-  result:
-    exchange: code-exchange
-    queue: code.result.queue
-    routingkey: code.result.routing-key
+  # Dead-letter exchange / queue / routing-key for poison-message isolation.
+  dlx:
+    name: code.analysis.dlx
+  dlq:
+    name: code.analysis.dlq
+    routingkey: code.analysis.dead
+
+# Redis read-model TTL (matches the code-service / gateway key-layout contract).
+app:
+  redis:
+    task-status-ttl: ${TASK_STATUS_TTL:PT24H}
 
 logging:
   level:
     org.hibernate.SQL: OFF
     org.hibernate.engine.jdbc.spi.SqlStatementLogger: OFF
     org.hibernate.type.descriptor.sql.BasicBinder: OFF
-    p6spy: DEBUG
+    p6spy: INFO

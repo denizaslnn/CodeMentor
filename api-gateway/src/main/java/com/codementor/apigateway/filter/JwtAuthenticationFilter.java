@@ -16,7 +16,9 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAuthenticationFilter.Config> {
 
-    private static final String WHITELISTED_PATH = "/api/v1/get-token";
+    private static final String AUTH_WHITELIST_PREFIX = "/api/v1/auth";
+    private static final String X_USER_ID_HEADER = "X-User-Id";
+    private static final String X_USER_ROLE_HEADER = "X-User-Role";
 
     private final JwtUtil jwtUtil;
     private final UnauthorizedResponseWriter unauthorizedResponseWriter;
@@ -30,9 +32,16 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
     @Override
     public GatewayFilter apply(Config config) {
         return (exchange, chain) -> {
-            // Whitelisted test endpoints skip JWT validation
-            if (WHITELISTED_PATH.equals(exchange.getRequest().getPath().value())) {
-                return chain.filter(exchange);
+            // Authentication endpoints manage their own credentials -> no access token required.
+            // Even here, client-supplied trusted headers are stripped.
+            if (exchange.getRequest().getPath().value().startsWith(AUTH_WHITELIST_PREFIX)) {
+                ServerWebExchange stripped = exchange.mutate()
+                        .request(r -> r.headers(headers -> {
+                            headers.remove(X_USER_ID_HEADER);
+                            headers.remove(X_USER_ROLE_HEADER);
+                        }))
+                        .build();
+                return chain.filter(stripped);
             }
 
             String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -46,13 +55,27 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             try {
                 Jws<Claims> jws = jwtUtil.validateAndParse(token);
 
+                if (!jwtUtil.hasRequiredClaims(jws)) {
+                    log.warn("JWT is missing required claims");
+                    return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
+                }
+
                 // Prefer explicit userId claim, fallback to subject
                 String userIdClaim = jwtUtil.getClaimAsString(jws, "userId");
                 String finalUserId = (userIdClaim != null) ? userIdClaim : jwtUtil.getSubject(jws);
+                String role = jwtUtil.getRole(jws);
 
-                // Add X-User-Id header for downstream services
+                // Add X-User-Id / X-User-Role headers for downstream services.
+                // Client-supplied values are removed first so they can never be spoofed.
                 ServerWebExchange mutated = exchange.mutate()
-                        .request(r -> r.header("X-User-Id", finalUserId != null ? finalUserId : ""))
+                        .request(r -> {
+                            r.headers(headers -> {
+                                headers.remove(X_USER_ID_HEADER);
+                                headers.remove(X_USER_ROLE_HEADER);
+                            });
+                            r.header(X_USER_ID_HEADER, finalUserId != null ? finalUserId : "");
+                            r.header(X_USER_ROLE_HEADER, role != null ? role : "");
+                        })
                         .build();
 
                 return chain.filter(mutated);

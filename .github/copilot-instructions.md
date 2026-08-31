@@ -16,7 +16,7 @@ High-level architecture
 
 - Monorepo with independent Spring Boot services in top-level folders: api-gateway, code-service, ai-service.
 - api-gateway: Spring Cloud Gateway, reactive Redis caching, routes requests to services.
-- code-service: REST entrypoints for creating code-analysis tasks, persists AnalysisTask via JPA (Postgres) and uses Redis for status caching. Publishes tasks to RabbitMQ (RabbitMqTaskPublisher / CodeTaskProducer).
+- code-service: REST entrypoints for creating code-analysis tasks, persists AnalysisRequest via JPA (Postgres) and uses Redis for status caching. Publishes tasks to RabbitMQ (RabbitMqTaskPublisher / CodeTaskProducer).
 - ai-service: Consumes RabbitMQ tasks, performs analysis, persists results (JPA) and updates Redis status. Rabbit topology and converters are configured in ai-service config classes.
 - Inter-service comms: RabbitMQ (AMQP) for asynchronous tasks; services expect compatible message converters and content types.
 

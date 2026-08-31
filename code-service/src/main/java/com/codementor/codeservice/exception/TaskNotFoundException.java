@@ -1,7 +1,7 @@
 package com.codementor.codeservice.exception;
 
-public class TaskNotFoundException extends RuntimeException {
-    public TaskNotFoundException(String message) {
-        super(message);
+public class TaskNotFoundException extends AppException {
+    public TaskNotFoundException(String taskId) {
+        super("error.task.notfound", "TASK_NOT_FOUND", taskId);
     }
 }

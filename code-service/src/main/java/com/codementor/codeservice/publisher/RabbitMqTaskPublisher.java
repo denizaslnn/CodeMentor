@@ -1,49 +1,52 @@
 package com.codementor.codeservice.publisher;
 
-import com.codementor.codeservice.CodeTaskMessage;
+import com.codementor.codeservice.dto.CodeTaskMessage;
 import com.codementor.codeservice.event.TaskCreatedEvent;
+import com.codementor.codeservice.service.RedisStatusService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
+/**
+ * RabbitMQ task publisher. {@link TaskCreatedEvent} transaction commit
+ * edildikten sonra (AFTER_COMMIT) tetiklenir; böylece DB kaydı kalıcı
+ * olmadan mesaj yayınlanmaz.
+ * <p>
+ * Redis status yazımı {@link RedisStatusService} üzerinden (TTL'li) yapılır;
+ * source of truth PostgreSQL'dir.
+ */
 @Component
 @Slf4j
 public class RabbitMqTaskPublisher {
 
     private final RabbitTemplate rabbitTemplate;
-    private final RedisTemplate<String, String> redisTemplate;
+    private final RedisStatusService redisStatusService;
+    private final String exchange;
+    private final String routingKey;
 
-    @Value("${rabbitmq.exchange:code-exchange}")
-    private String exchange;
-
-    @Value("${rabbitmq.routingkey:code-routing-key}")
-    private String routingKey;
-
-    public RabbitMqTaskPublisher(RabbitTemplate rabbitTemplate, RedisTemplate<String, String> redisTemplate) {
+    public RabbitMqTaskPublisher(RabbitTemplate rabbitTemplate,
+                                 RedisStatusService redisStatusService,
+                                 @Value("${rabbitmq.exchange:code-exchange}") String exchange,
+                                 @Value("${rabbitmq.routingkey:code-routing-key}") String routingKey) {
         this.rabbitTemplate = rabbitTemplate;
-        this.redisTemplate = redisTemplate;
-        // Ensure the RabbitTemplate uses Jackson JSON converter so payloads are sent as application/json
-        @SuppressWarnings("deprecation")
-        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
-        this.rabbitTemplate.setMessageConverter(converter);
+        this.redisStatusService = redisStatusService;
+        this.exchange = exchange;
+        this.routingKey = routingKey;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTaskCreated(TaskCreatedEvent event) {
         String taskId = event.getTaskId();
-        try {
-            redisTemplate.opsForValue().set("task:" + taskId, "PENDING");
-        } catch (Exception e) {
-            log.error("Redis başlangıç durumu kaydı başarısız. taskId={}, error={}", taskId, e.getMessage(), e);
-        }
 
-        CodeTaskMessage msg = new CodeTaskMessage(taskId, event.getSourceCode(), event.getPrompt());
-        log.info("RabbitMQ task yayınlanıyor. taskId={}", taskId);
-        rabbitTemplate.convertAndSend(exchange, routingKey, msg);
+        // Redis: hızlı status/read-model. TTL'li; kaybolursa PostgreSQL fallback devrede.
+        redisStatusService.saveTaskStatus(taskId, "PENDING");
+
+        CodeTaskMessage message = new CodeTaskMessage(taskId, event.getSourceCode(), event.getPrompt());
+        log.info("RabbitMQ task yayınlanıyor. taskId={}, exchange={}, routingKey={}, status=PENDING",
+                taskId, exchange, routingKey);
+        rabbitTemplate.convertAndSend(exchange, routingKey, message);
     }
 }

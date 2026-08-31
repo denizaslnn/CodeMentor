@@ -1,67 +1,37 @@
 package com.codementor.aiservice.consumer;
 
 import com.codementor.aiservice.dto.CodeTaskMessage;
-import com.codementor.aiservice.entity.AnalysisRequest;
-import com.codementor.aiservice.repository.AnalysisRepository;
-import com.codementor.aiservice.service.AiAnalysisService;
-import com.codementor.aiservice.service.RedisStatusService;
+import com.codementor.aiservice.service.CodeTaskProcessingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
-
+/**
+ * RabbitMQ consumer for code-analysis tasks.
+ * <p>
+ * Thin boundary around {@link RabbitListener}: all processing (idempotency,
+ * status lifecycle, analysis, DB/Redis writes) lives in
+ * {@link CodeTaskProcessingService}. Failures are persisted as FAILED inside
+ * the processor and the message is ACK'd, so a failing task cannot poison the
+ * queue (no requeue/retry loop).
+ */
 @Component
 @Slf4j
 public class CodeTaskConsumer {
 
-    private final RedisStatusService redisStatusService;
-    private final AiAnalysisService aiAnalysisService;
-    private final AnalysisRepository analysisRepository;
+    private final CodeTaskProcessingService processingService;
 
-    public CodeTaskConsumer(RedisStatusService redisStatusService,
-                            AiAnalysisService aiAnalysisService,
-                            AnalysisRepository analysisRepository) {
-        this.redisStatusService = redisStatusService;
-        this.aiAnalysisService = aiAnalysisService;
-        this.analysisRepository = analysisRepository;
+    public CodeTaskConsumer(CodeTaskProcessingService processingService) {
+        this.processingService = processingService;
     }
 
-    // Adım 8: Consume Message from Queue
     @RabbitListener(queues = "${rabbitmq.queue.name}")
     public void consumeMessage(CodeTaskMessage message) {
-        String taskId = message.getTaskId();
-        log.info("Kuyruktan mesaj alındı. taskId={}", taskId);
-
-        try {
-            redisStatusService.updateStatus(taskId, "PROCESSING");
-            updateDbStatus(taskId, "PROCESSING", null);
-
-            String result = aiAnalysisService.analyze(message.getCode(), message.getLanguage());
-
-            redisStatusService.updateCompleted(taskId, result);
-            updateDbStatus(taskId, "COMPLETED", result);
-
-            log.info("Analiz tamamlandı. taskId={}", taskId);
-
-        } catch (Exception e) {
-            log.error("Analiz sırasında hata oluştu. taskId={}, error={}", taskId, e.getMessage(), e);
-            updateDbStatus(taskId, "FAILED", e.getMessage());
-            redisStatusService.updateStatus(taskId, "FAILED");
+        if (message == null) {
+            log.warn("Null mesaj alındı, yok sayıldı.");
+            return;
         }
-    }
-
-    private void updateDbStatus(String taskId, String status, String aiResponse) {
-        Optional<AnalysisRequest> optionalRequest = analysisRepository.findById(taskId);
-        if (optionalRequest.isPresent()) {
-            AnalysisRequest request = optionalRequest.get();
-            request.setStatus(status);
-            if (aiResponse != null) {
-                request.setAiResponse(aiResponse);
-            }
-            analysisRepository.save(request);
-        } else {
-            log.warn("Task veritabanında bulunamadı. taskId={}", taskId);
-        }
+        log.info("Kuyruktan mesaj alındı. taskId={}", message.getTaskId());
+        processingService.process(message);
     }
 }

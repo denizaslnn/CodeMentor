@@ -18,23 +18,42 @@ spring:
               predicates:
                 - Path=/api/v1/**
               filters:
-                - name: JwtAuthenticationFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 2
+                    redis-rate-limiter.burstCapacity: 5
+                    key-resolver: "#{@userAwareKeyResolver}"
           globalcors:
             cors-configurations:
               '[/**]':
-                allowedOrigins: "*"
+                # Credentialed (cookie) traffic requires explicit origins - "*" + allowCredentials is invalid.
+                allowedOriginPatterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
                 allowedMethods:
                   - GET
                   - POST
                   - PUT
                   - DELETE
+                  - OPTIONS
                 allowedHeaders: "*"
+                allowCredentials: true
+                maxAge: 3600
 
-# Prompt/AI (kod analiz) endpointi icin rate limiter ayarlari
-# RedisRateLimiter bean'i (RateLimiterConfig) tarafindan kullanilir
+# JWT auth: secret asla hard-code edilmez; JWT_SECRET environment variable'dan gelir.
+# code-service ile BIREBIRE AYNI secret + issuer/audience kullanilmalidir.
+# Secret en az 256-bit (32 byte base64-decode edilmis) olmalidir (JwtUtil fail-fast).
 jwt:
-  # 256-bit (32-byte) base64-encoded secret key. Change to a secure random key for production.
-  secret: a2V5MTIzNDU2Nzg5MTIzNDU2Nzg5MTIzNDU2Nzg5MTI=
+  secret: ${JWT_SECRET:}
+  issuer: ${JWT_ISSUER:codementor}
+  audience: ${JWT_AUDIENCE:api-gateway}
+  # Access token TTL (ms). Default: 15 dk
+  access-token-expiration: ${ACCESS_TOKEN_EXPIRATION:900000}
+
+# Auth brute-force protection (api-gateway AuthRateLimitWebFilter, /api/v1/auth/** per IP)
+app:
+  auth:
+    ratelimit:
+      max-attempts: ${AUTH_RATELIMIT_MAX_ATTEMPTS:10}
+      window-seconds: ${AUTH_RATELIMIT_WINDOW_SECONDS:60}
 
 code-mentor:
   rate-limiter:

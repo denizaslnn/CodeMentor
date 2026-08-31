@@ -1,65 +1,99 @@
 package com.codementor.aiservice.exception;
 
-import jakarta.persistence.EntityNotFoundException;
+import com.codementor.aiservice.dto.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.LocalDateTime;
+import java.sql.SQLException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
 @Slf4j
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
+    private final MessageSource messageSource;
+
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(ResourceNotFoundException ex, HttpServletRequest request) {
-        log.error("Resource not found. path={}, message={}", request.getRequestURI(), ex.getMessage(), ex);
-        return buildErrorResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage(), request.getRequestURI());
+    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
+        return build(ex, HttpStatus.NOT_FOUND, false);
     }
 
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleEntityNotFound(EntityNotFoundException ex, HttpServletRequest request) {
-        log.error("Entity not found. path={}, message={}", request.getRequestURI(), ex.getMessage(), ex);
-        return buildErrorResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage(), request.getRequestURI());
+    @ExceptionHandler(AppException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApp(AppException ex) {
+        return build(ex, HttpStatus.INTERNAL_SERVER_ERROR, true);
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException ex, HttpServletRequest request) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
+    @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
+    public ResponseEntity<ApiResponse<Void>> handleValidation(BindException ex) {
+        String detail = ex.getBindingResult().getFieldErrors().stream()
+                .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        if (message.isBlank()) {
-            message = "Validation failed.";
-        }
+        log.warn("Validation failed: {}", detail);
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(detail)
+                        .errorCode("VALIDATION_FAILED")
+                        .httpStatusCode(400)
+                        .build());
+    }
 
-        log.error("Validation error. path={}, message={}", request.getRequestURI(), message, ex);
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Bad Request", message, request.getRequestURI());
+    @ExceptionHandler({SQLException.class, DataAccessException.class})
+    public ResponseEntity<ApiResponse<Void>> handleDatabase(Exception ex) {
+        log.error("Database error: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(500).body(ApiResponse.error(
+                "error.generic.database", "DATABASE_ERROR", 500));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
-        log.error("Unhandled exception. path={}, message={}", request.getRequestURI(), ex.getMessage(), ex);
-        return buildErrorResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR,
-                "Internal Server Error",
-                "Bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
-                request.getRequestURI()
-        );
+    public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex, HttpServletRequest request) {
+        if (isClientAbort(ex)) {
+            log.debug("Client disconnected: {}", ex.getMessage());
+            return ResponseEntity.noContent().build();
+        }
+        log.error("Unhandled error at {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+        return ResponseEntity.status(500).body(ApiResponse.error(
+                "error.generic.unexpected", "INTERNAL_ERROR", 500));
     }
 
-    private ResponseEntity<ErrorResponse> buildErrorResponse(HttpStatus status, String error, String message, String path) {
-        ErrorResponse body = new ErrorResponse(
-                LocalDateTime.now(),
-                status.value(),
-                error,
-                message,
-                path
-        );
-        return ResponseEntity.status(status).body(body);
+    private ResponseEntity<ApiResponse<Void>> build(AppException ex, HttpStatus status, boolean serverFault) {
+        if (serverFault) {
+            log.error("{} -> {} key={}", ex.getClass().getSimpleName(), status, ex.getMessageKey(), ex);
+        } else {
+            log.warn("{} -> {} key={} args={}", ex.getClass().getSimpleName(), status,
+                    ex.getMessageKey(), java.util.Arrays.toString(ex.getArgs()));
+        }
+        return ResponseEntity.status(status).body(ApiResponse.error(ex.getMessageKey(), ex.getErrorCode(), status.value(), ex.getArgs()));
+    }
+
+    private String msg(String key, String fallback, Object... args) {
+        try {
+            return messageSource.getMessage(key, args, LocaleContextHolder.getLocale());
+        } catch (Exception e) {
+            log.warn("Missing message key: {}", key);
+            return fallback;
+        }
+    }
+
+    private static boolean isClientAbort(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            String m = c.getMessage();
+            if (c.getClass().getName().contains("ClientAbortException")
+                    || (m != null && (m.contains("Broken pipe") || m.contains("Connection reset")))) {
+                return true;
+            }
+        }
+        return false;
     }
 }

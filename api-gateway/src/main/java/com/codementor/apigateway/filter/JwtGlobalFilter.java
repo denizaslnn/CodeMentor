@@ -23,7 +23,9 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class JwtGlobalFilter implements GlobalFilter, Ordered {
 
-    private static final String WHITELISTED_PATH = "/api/v1/get-token";
+    private static final String AUTH_WHITELIST_PREFIX = "/api/v1/auth";
+    private static final String X_USER_ID_HEADER = "X-User-Id";
+    private static final String X_USER_ROLE_HEADER = "X-User-Role";
 
     private final JwtUtil jwtUtil;
     private final UnauthorizedResponseWriter unauthorizedResponseWriter;
@@ -36,9 +38,16 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
-        // Whitelisted test endpoints (e.g. token generation for local testing) skip JWT validation
-        if (WHITELISTED_PATH.equals(path)) {
-            return chain.filter(exchange);
+        // Authentication endpoints manage their own credentials -> no access token required.
+        // Even here, client-supplied trusted headers are stripped so downstream never trusts them.
+        if (path.startsWith(AUTH_WHITELIST_PREFIX)) {
+            ServerWebExchange stripped = exchange.mutate()
+                    .request(r -> r.headers(headers -> {
+                        headers.remove(X_USER_ID_HEADER);
+                        headers.remove(X_USER_ROLE_HEADER);
+                    }))
+                    .build();
+            return chain.filter(stripped);
         }
         // Apply only to API routes
         if (!path.startsWith("/api/v1")) {
@@ -55,21 +64,35 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
         try {
             Jws<Claims> jws = jwtUtil.validateAndParse(token);
 
-            // Extract user id (subject or userId claim)
+            if (!jwtUtil.hasRequiredClaims(jws)) {
+                log.warn("JWT is missing required claims for {}", path);
+                return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
+            }
+
+            // Extract user id (subject or userId claim) and role for downstream services
             String userId = jwtUtil.getClaimAsString(jws, "userId");
             if (userId == null) {
                 userId = jwtUtil.getSubject(jws);
             }
+            String role = jwtUtil.getRole(jws);
 
             ServerHttpRequest request = exchange.getRequest();
             long contentLength = request.getHeaders().getContentLength();
             // make final copies for lambda capture
             final ServerWebExchange finalExchange = exchange;
             final String finalUserId = userId;
+            final String finalRole = role;
 
-            // If there is no body, just add header and continue.
+            // If there is no body, just add headers and continue.
             if (contentLength == 0) {
-                ServerHttpRequest mutated = request.mutate().header("X-User-Id", userId != null ? userId : "").build();
+                ServerHttpRequest mutated = request.mutate()
+                        .headers(headers -> {
+                            headers.remove(X_USER_ID_HEADER);
+                            headers.remove(X_USER_ROLE_HEADER);
+                        })
+                        .header(X_USER_ID_HEADER, finalUserId != null ? finalUserId : "")
+                        .header(X_USER_ROLE_HEADER, finalRole != null ? finalRole : "")
+                        .build();
                 return chain.filter(exchange.mutate().request(mutated).build());
             }
 
@@ -91,7 +114,12 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
                         };
 
                         ServerHttpRequest mutated = decorated.mutate()
-                                .header("X-User-Id", finalUserId != null ? finalUserId : "")
+                                .headers(headers -> {
+                                    headers.remove(X_USER_ID_HEADER);
+                                    headers.remove(X_USER_ROLE_HEADER);
+                                })
+                                .header(X_USER_ID_HEADER, finalUserId != null ? finalUserId : "")
+                                .header(X_USER_ROLE_HEADER, finalRole != null ? finalRole : "")
                                 .build();
 
                         return chain.filter(finalExchange.mutate().request(mutated).build());

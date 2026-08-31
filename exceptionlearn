@@ -1,0 +1,290 @@
+Global Exception Handling — Kurallar ve Uygulama Rehberi
+> Bu doküman bir **prompt / checklist**'tir. Bir Spring Boot (Java 17+) projesinde hata yönetimini
+> sıfırdan kurarken veya mevcut kodu düzeltirken bu kuralları uygula. Proje bağımsızdır.
+---
+Temel fikir
+Hata yönetimi tek bir yerde toplanır. Controller ve service'ler hata yakalamaz, hata fırlatır.
+Tek bir `@RestControllerAdvice` sınıfı bütün exception'ları HTTP cevabına çevirir.
+```
+Service  --throw-->  Domain Exception  --yakalar-->  GlobalExceptionHandler  --> JSON
+                     (i18n key taşır)                (log + mesaj + HTTP status)
+```
+Neden: hata cevabının şekli tek yerden kontrol edilir, log disiplini tek yerde olur,
+controller'lar iş mantığına odaklanır, aynı hata her endpoint'te aynı şekilde döner.
+---
+12 Kural
+Controller'da `try/catch` yok. İş mantığı hatasında exception fırlat, handler'a bırak.
+`catch` sadece bir hatayı dönüştürmek için kullanılır (aşağıda kural 4).
+Her iş hatası için bir exception sınıfı. `UserNotFoundException`, `InsufficientBalanceException`
+gibi. Genel `RuntimeException("kullanıcı yok")` fırlatmak yasak — handler onu ayırt edemez.
+Exception mesaj metni değil mesaj anahtarı taşır. Kullanıcıya gidecek cümleyi Java kodunda
+yazma; `messages.properties` içine yaz, exception sadece key + parametre tutsun. Böylece dil
+desteği ve metin değişikliği kodu ellemeden yapılır.
+Altyapı hatasını sarmala, yut(ma). DB/HTTP/gRPC hatasını kendi exception'ına çevirirken
+`cause`'u mutlaka ilet:
+```java
+   catch (RestClientException e) { throw new PaymentServiceException(e); }  // ✅
+   catch (RestClientException e) { throw new PaymentServiceException(); }   // ❌ stack trace kayboldu
+   catch (Exception e) { return null; }                                     // ❌ hata yutuldu
+   ```
+Teknik detay ASLA cevaba girmez. `SQLException`, `NullPointerException`, HTTP client
+exception'ının `getMessage()`'ı kullanıcıya dönmez — tablo adı, kolon adı, iç IP, stack trace
+sızdırır. Teknik detay log'a, kullanıcıya genel mesaj.
+HTTP status'u handler seçer, exception seçmez. Aynı exception farklı bağlamda farklı status
+isteyebilir; kararı tek yerde tut.
+Durum	Status
+Geçersiz girdi / validasyon	400
+Kimlik doğrulanmadı	401
+Yetki yok	403
+Kayıt yok	404
+Çakışma (unique ihlali)	409
+İş kuralı ihlali (girdi doğru ama işlem yapılamaz)	422
+Bizim hatamız (bug, DB, beklenmeyen)	500
+Bağımlı servis cevap vermiyor	503
+Log seviyesi status'a göre: 4xx → `log.warn` (mesaj yeter, stack trace gerekmez),
+5xx → `log.error(msg, ex)` (throwable'ı mutlaka geç), bilgi amaçlı → `log.info`.
+4xx'i `error` loglamak alarm gürültüsü yaratır; 5xx'i throwable'sız loglamak hatayı
+teşhis edilemez yapar.
+Log'a asla hassas veri yazma. Şifre, token, kart numarası, TC kimlik, tam e-posta.
+Gerekirse maskele (`ab***@x.com`) veya sadece id yaz.
+Cevap zarfı (envelope) her endpoint'te aynı. Başarı da hata da aynı şemayla dönsün:
+```json
+   { "success": true,  "message": "...", "data": {...}, "httpStatusCode": 200 }
+   { "success": false, "message": "Kayıt bulunamadı: 42", "httpStatusCode": 404, "errorCode": "USER_NOT_FOUND" }
+   ```
+`errorCode` makine için (frontend `if` yazar, asla değişmez), `message` insan için (dili/metni değişebilir).
+En sonda bir `Exception.class` handler'ı olmalı — hiçbir hata çıplak stack trace olarak
+kullanıcıya gitmesin. Bu handler daima 500 + genel mesaj döner.
+Handler'ın kendisi patlamamalı. Mesaj arama (`MessageSource`) exception fırlatabilir; onu
+yakala ve fallback metin döndür. Aksi halde hata yönetiminde hata → sonsuz döngü.
+Kopan bağlantı hata değildir. `Broken pipe` / `Connection reset` / `ClientAbortException`
+kullanıcı sekmeyi kapattığında olur. `log.debug` + boş cevap; `log.error` yapıp
+on-call'ı uyandırma.
+---
+İskelet kod
+1) Mesaj dosyası — `src/main/resources/messages.properties`
+```properties
+# Kullanıcıya giden BÜTÜN metinler burada. {0}, {1} = parametre.
+error.user.notfound=Kullanıcı bulunamadı: {0}
+error.balance.insufficient=Bakiye yetersiz. Gerekli: {0} TL
+error.generic.invalid.request=Geçersiz istek
+error.generic.conflict=Kaynak çakışması
+error.generic.database=Veritabanı hatası oluştu
+error.generic.unexpected=Beklenmeyen bir hata oluştu
+error.generic.upstream={0} servisi şu anda yanıt vermiyor
+```
+İkinci dil gerekiyorsa `messages_en.properties` ekle — anahtar listeleri birebir aynı olmalı.
+2) Taban exception
+```java
+@Getter
+public class AppException extends RuntimeException {
+    private final String messageKey;   // messages.properties anahtarı
+    private final String errorCode;    // frontend'in gördüğü sabit kod
+    private final Object[] args;       // {0}, {1} için değerler
+
+    public AppException(String messageKey, String errorCode, Object... args) {
+        super(messageKey);             // log'da anahtar görünsün
+        this.messageKey = messageKey;
+        this.errorCode = errorCode;
+        this.args = args;
+    }
+
+    public AppException(String messageKey, String errorCode, Throwable cause, Object... args) {
+        super(messageKey, cause);      // cause KAYBOLMASIN
+        this.messageKey = messageKey;
+        this.errorCode = errorCode;
+        this.args = args;
+    }
+}
+```
+3) Domain exception (her iş hatası için bir tane, 5 satır)
+```java
+public class UserNotFoundException extends AppException {
+    public UserNotFoundException(String userId) {
+        super("error.user.notfound", "USER_NOT_FOUND", userId);
+    }
+}
+```
+4) Cevap zarfı
+```java
+@Getter @Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ApiResponse<T> {
+    private boolean success;
+    private String message;
+    private T data;
+    private int httpStatusCode;
+    private String errorCode;
+
+    public static <T> ApiResponse<T> success(T data) {
+        return ApiResponse.<T>builder().success(true).data(data).httpStatusCode(200).build();
+    }
+
+    public static <T> ApiResponse<T> error(String message, String errorCode, int status) {
+        return ApiResponse.<T>builder().success(false).message(message)
+                .errorCode(errorCode).httpStatusCode(status).build();
+    }
+}
+```
+5) Global handler
+```java
+@Slf4j
+@RestControllerAdvice
+@RequiredArgsConstructor
+public class GlobalExceptionHandler {
+
+    private final MessageSource messageSource;
+
+    // --- Domain hataları: status'u burada eşleştir ---
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserNotFound(UserNotFoundException ex) {
+        return build(ex, HttpStatus.NOT_FOUND, false);
+    }
+
+    @ExceptionHandler(InsufficientBalanceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInsufficientBalance(InsufficientBalanceException ex) {
+        return build(ex, HttpStatus.UNPROCESSABLE_ENTITY, false);
+    }
+
+    @ExceptionHandler(PaymentServiceException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePayment(PaymentServiceException ex) {
+        return build(ex, HttpStatus.SERVICE_UNAVAILABLE, true);   // 5xx -> stack trace'li log
+    }
+
+    /** Eşlenmemiş her AppException için son durak. */
+    @ExceptionHandler(AppException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApp(AppException ex) {
+        return build(ex, HttpStatus.INTERNAL_SERVER_ERROR, true);
+    }
+
+    // --- Bean validation (@Valid) ---
+    @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
+    public ResponseEntity<ApiResponse<Void>> handleValidation(BindException ex) {
+        String detail = ex.getBindingResult().getFieldErrors().stream()
+                .map(f -> f.getField() + ": " + f.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        log.warn("Validation failed: {}", detail);                // 4xx -> warn
+        // Alan hataları güvenli: metinler bizim @NotBlank/@Size mesajlarımızdan geliyor.
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(detail, "VALIDATION_FAILED", 400));
+    }
+
+    // --- DB çakışması ---
+    @ExceptionHandler({DuplicateKeyException.class, DataIntegrityViolationException.class})
+    public ResponseEntity<ApiResponse<Void>> handleConflict(Exception ex) {
+        log.warn("Data conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(
+                msg("error.generic.conflict", "Kaynak çakışması"), "RESOURCE_CONFLICT", 409));
+    }
+
+    // --- DB hatası: detay SADECE log'a ---
+    @ExceptionHandler({SQLException.class, DataAccessException.class})
+    public ResponseEntity<ApiResponse<Void>> handleDatabase(Exception ex) {
+        log.error("Database error: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(500).body(ApiResponse.error(
+                msg("error.generic.database", "Veritabanı hatası oluştu"), "DATABASE_ERROR", 500));
+    }
+
+    // --- Son durak: hiçbir hata çıplak kalmasın ---
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex) {
+        if (isClientAbort(ex)) {                                  // Kural 12
+            log.debug("Client disconnected: {}", ex.getMessage());
+            return ResponseEntity.noContent().build();
+        }
+        log.error("Unhandled error: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(500).body(ApiResponse.error(
+                msg("error.generic.unexpected", "Beklenmeyen bir hata oluştu"), "INTERNAL_ERROR", 500));
+    }
+
+    // ---------------- yardımcılar ----------------
+
+    private ResponseEntity<ApiResponse<Void>> build(AppException ex, HttpStatus status, boolean serverFault) {
+        if (serverFault) {
+            log.error("{} -> {} key={}", ex.getClass().getSimpleName(), status, ex.getMessageKey(), ex);
+        } else {
+            log.warn("{} -> {} key={} args={}", ex.getClass().getSimpleName(), status,
+                    ex.getMessageKey(), ex.getArgs());
+        }
+        String text = msg(ex.getMessageKey(), status.getReasonPhrase(), ex.getArgs());
+        return ResponseEntity.status(status).body(ApiResponse.error(text, ex.getErrorCode(), status.value()));
+    }
+
+    /** Mesaj arama ASLA patlamamalı (Kural 11). */
+    private String msg(String key, String fallback, Object... args) {
+        try {
+            return messageSource.getMessage(key, args, LocaleContextHolder.getLocale());
+        } catch (Exception e) {
+            log.warn("Missing message key: {}", key);
+            return fallback;
+        }
+    }
+
+    private static boolean isClientAbort(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            String m = c.getMessage();
+            if (c.getClass().getName().contains("ClientAbortException")
+                    || (m != null && (m.contains("Broken pipe") || m.contains("Connection reset")))) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+```
+6) Kullanım — service ve controller
+```java
+// Service: hata fırlat, mesaj kurma
+public User get(String id) {
+    return repository.findById(id).orElseThrow(() -> new UserNotFoundException(id));
+}
+
+// Client katmanı: altyapı hatasını sarmala, cause'u ilet
+try {
+    return paymentClient.charge(req);
+} catch (RestClientException e) {
+    throw new PaymentServiceException(e);
+}
+
+// Controller: try/catch YOK, sadece mutlu yol
+@GetMapping("/{id}")
+public ApiResponse<UserResponse> get(@PathVariable String id) {
+    return ApiResponse.success(mapper.toResponse(userService.get(id)));
+}
+```
+---
+Sık yapılan hatalar
+❌ Yanlış	✅ Doğru
+`catch (Exception e) { }`	Yakalamayacaksan hiç yakalama; yakaladıysan logla ve dönüştür
+`catch (Exception e) { e.printStackTrace(); }`	`log.error("...", e)`
+`catch (Exception e) { return null; }`	Exception fırlat; `null` çağıranı NPE'ye sürükler
+`throw new RuntimeException("kullanıcı yok")`	`throw new UserNotFoundException(id)`
+`return ApiResponse.error(ex.getMessage())`	Bundle'dan gelen genel mesaj; detay log'a
+Her hataya 500 dönmek	Tabloya göre 400/404/409/422 ayır
+Her hataya 200 dönüp body'de `success:false`	Doğru HTTP status kullan
+Tek `catch (Exception e)` ile 10 farklı durumu ezmek	Tip başına ayrı `@ExceptionHandler`
+`log.error` içine throwable koymamak	`log.error("mesaj: {}", x, ex)` — `ex` en sonda, `{}` almaz
+Kullanıcı mesajını Java'da string olarak yazmak	`messages.properties`
+Aynı hatayı hem service'te hem handler'da loglamak	Tek yerde logla (handler)
+---
+Bitti diyebilmek için checklist
+[ ] Projede tek `@RestControllerAdvice` sınıfı var.
+[ ] Controller'larda hiç `try/catch` kalmadı.
+[ ] `Exception.class` handler'ı var ve 500 + genel mesaj dönüyor.
+[ ] `SQLException` / `NullPointerException` mesajı hiçbir cevaba girmiyor (grep ile kontrol et).
+[ ] Kullanıcıya giden bütün metinler `messages.properties`'te; çok dilli ise anahtarlar iki dosyada eşit.
+[ ] 4xx → `warn`, 5xx → `error(msg, ex)`.
+[ ] Log'larda şifre/token/kart/kimlik yok.
+[ ] `errorCode` değerleri sabit, isimleri anlamlı, frontend'e dokümante edildi.
+[ ] Test: olmayan id → 404; geçersiz body → 400; unique ihlali → 409; zorlanmış DB hatası → 500 +
+cevapta teknik detay yok, log'da tam detay var.
+---
+Notlar (kapsam dışı kalanlar)
+Spring Security exception'ları filter zincirinde oluşur ve `@ControllerAdvice`'a düşmez.
+401/403 için `AuthenticationEntryPoint` ve `AccessDeniedHandler` yazıp aynı JSON zarfını üret.
+WebFlux kullanıyorsan tasarım aynı; handler `Mono<ResponseEntity<...>>` döner ve
+`HttpServletRequest` yerine `ServerWebExchange` kullanılır.
+Kafka / gRPC / scheduled job girişleri de `@ControllerAdvice` dışındadır; aynı eşleştirmeyi
+ilgili error handler / interceptor içinde tekrarla.
+Async / thread pool iş parçalarında request context (locale, traceId) taşınmaz; gerekiyorsa
+`TaskDecorator` ile MDC'yi kopyala.

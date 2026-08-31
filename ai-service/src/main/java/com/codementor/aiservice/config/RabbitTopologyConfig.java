@@ -3,16 +3,20 @@ package com.codementor.aiservice.config;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.annotation.Value;
 
+/**
+ * Consumer-owned RabbitMQ topology: durable task queue with a dead-letter
+ * exchange (poison messages land in a DLQ instead of looping forever) + DLX/DLQ.
+ * The exchange is declared here as well (idempotent); the producer
+ * (code-service) declares the same exchange on the producer side.
+ */
 @Configuration
 public class RabbitTopologyConfig {
-
-    @Value("${rabbitmq.queue.name}")
-    private String taskQueueName;
 
     @Value("${rabbitmq.exchange}")
     private String exchangeName;
@@ -20,25 +24,39 @@ public class RabbitTopologyConfig {
     @Value("${rabbitmq.routingkey}")
     private String routingKey;
 
-    @Value("${rabbitmq.result.routingkey}")
-    private String resultRoutingKey;
+    @Value("${rabbitmq.queue.name}")
+    private String taskQueueName;
 
-    @Value("${rabbitmq.result.queue}")
-    private String resultQueueName;
+    @Value("${rabbitmq.dlx.name:code.analysis.dlx}")
+    private String deadLetterExchangeName;
 
-    @Bean
-    public Queue taskQueue() {
-        return new Queue(taskQueueName, true);
-    }
+    @Value("${rabbitmq.dlq.name:code.analysis.dlq}")
+    private String deadLetterQueueName;
 
-    @Bean
-    public Queue resultQueue() {
-        return new Queue(resultQueueName, true);
-    }
+    @Value("${rabbitmq.dlq.routingkey:code.analysis.dead}")
+    private String deadLetterRoutingKey;
 
     @Bean
     public TopicExchange exchange() {
         return new TopicExchange(exchangeName);
+    }
+
+    @Bean
+    public TopicExchange deadLetterExchange() {
+        return new TopicExchange(deadLetterExchangeName);
+    }
+
+    @Bean
+    public Queue taskQueue() {
+        return QueueBuilder.durable(taskQueueName)
+                .withArgument("x-dead-letter-exchange", deadLetterExchangeName)
+                .withArgument("x-dead-letter-routing-key", deadLetterRoutingKey)
+                .build();
+    }
+
+    @Bean
+    public Queue deadLetterQueue() {
+        return QueueBuilder.durable(deadLetterQueueName).build();
     }
 
     @Bean
@@ -47,7 +65,7 @@ public class RabbitTopologyConfig {
     }
 
     @Bean
-    public Binding resultBinding(Queue resultQueue, TopicExchange exchange) {
-        return BindingBuilder.bind(resultQueue).to(exchange).with(resultRoutingKey);
+    public Binding deadLetterBinding(Queue deadLetterQueue, TopicExchange deadLetterExchange) {
+        return BindingBuilder.bind(deadLetterQueue).to(deadLetterExchange).with(deadLetterRoutingKey);
     }
 }

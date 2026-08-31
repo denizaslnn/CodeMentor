@@ -1,72 +1,54 @@
 package com.codementor.aiservice.consumer;
 
 import com.codementor.aiservice.dto.CodeTaskMessage;
-import com.codementor.aiservice.repository.AnalysisRepository;
-import com.codementor.aiservice.service.AiAnalysisService;
-import com.codementor.aiservice.service.RedisStatusService;
+import com.codementor.aiservice.service.CodeTaskProcessingService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.*;
 
+/**
+ * Consumer boundary tests. The consumer is now a thin delegator to
+ * {@link CodeTaskProcessingService}; these tests lock that contract.
+ */
 @ExtendWith(MockitoExtension.class)
 class CodeTaskConsumerTest {
 
     @Mock
-    private RedisStatusService redisStatusService;
+    private CodeTaskProcessingService processingService;
 
-    @Mock
-    private AiAnalysisService aiAnalysisService;
-
-    @Mock
-    private AnalysisRepository analysisRepository;
-
-    /**
-     * Adım 9 doğrulaması: mesaj kuyruktan alındığıda,
-     * task statüsünü anında Redis'te PROCESSING olarak güncellenmelidir.
-     * (Adım 10'a ilgili analyze() çağrı sadece kuralar — bu testte,
-     * analyze 3sn sın, sadece PROCESSING'e bakar.)
-     */
     @Test
-    void consumeMessage_updatesRedisStatusToProcessing() {
-        CodeTaskConsumer consumer = new CodeTaskConsumer(
-                redisStatusService, aiAnalysisService, analysisRepository);
-
-        CodeTaskMessage message = new CodeTaskMessage("task-123", "int x = 1;", "java");
+    void consumeMessage_delegatesToProcessor_withNewContractFields() {
+        CodeTaskConsumer consumer = new CodeTaskConsumer(processingService);
+        CodeTaskMessage message = new CodeTaskMessage("task-1", "int x = 1;", "lütfen kodu incele", "java");
 
         consumer.consumeMessage(message);
 
-        verify(redisStatusService).updateStatus("task-123", "PROCESSING");
-        verify(aiAnalysisService).analyze("int x = 1;", "java");
+        // The consumer forwards the whole message; the processor (not the
+        // consumer) decides how to read sourceCode/prompt/language.
+        verify(processingService).process(message);
     }
 
-    /**
-     * Adım 8 doğrulaması: boş/geçersiziz taskId'li mesajlar
-     * Redis/DB'de dokunmadan işlenirilir.
-     */
-    @Test
-    void consumeMessage_ignoresBlankTaskId() {
-        CodeTaskConsumer consumer = new CodeTaskConsumer(
-                redisStatusService, aiAnalysisService, analysisRepository);
-
-        consumer.consumeMessage(new CodeTaskMessage("  ", "int x = 1;", "java"));
-
-        verifyNoMoreInteractions(redisStatusService, aiAnalysisService);
-    }
-
-    /**
-     * Adım 8 doğrulaması: null mesaj, atışlı işlenmeden lenirilir.
-     */
     @Test
     void consumeMessage_ignoresNullMessage() {
-        CodeTaskConsumer consumer = new CodeTaskConsumer(
-                redisStatusService, aiAnalysisService, analysisRepository);
+        CodeTaskConsumer consumer = new CodeTaskConsumer(processingService);
 
         consumer.consumeMessage(null);
 
-        verifyNoMoreInteractions(redisStatusService, aiAnalysisService);
+        verifyNoInteractions(processingService);
+    }
+
+    @Test
+    void consumeMessage_delegatesEvenForBlankTaskId_processorHandlesIt() {
+        CodeTaskConsumer consumer = new CodeTaskConsumer(processingService);
+        CodeTaskMessage message = new CodeTaskMessage("  ", "int x = 1;", "prompt", "java");
+
+        consumer.consumeMessage(message);
+
+        // Blank-taskId guard lives in the processor; the consumer does not
+        // pre-filter and still delegates.
+        verify(processingService).process(message);
     }
 }

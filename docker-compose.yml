@@ -73,12 +73,25 @@ services:
       SPRING_RABBITMQ_USERNAME: guest
       SPRING_RABBITMQ_PASSWORD: guest
       RABBITMQ_EXCHANGE: code-exchange
-      RABBITMQ_QUEUE: code.analysis.queue
       RABBITMQ_ROUTINGKEY: code-routing-key
-      RABBITMQ_RESULT_QUEUE: code.result.queue
-      RABBITMQ_RESULT_ROUTINGKEY: code.result.routing-key
-    ports:
-      - "8084:8084"
+      # Producer no longer declares/uses a result queue (results are persisted to DB + Redis).
+      # Shared Redis TTL (default 24h).
+      TASK_STATUS_TTL: ${TASK_STATUS_TTL:-24h}
+      TASK_RESULT_TTL: ${TASK_RESULT_TTL:-24h}
+      # JWT auth: secret supplied from env (base64, >= 256-bit). Never committed.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET environment variable is required (>= 256-bit base64)}
+      JWT_ISSUER: ${JWT_ISSUER:-codementor}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-api-gateway}
+      ACCESS_TOKEN_EXPIRATION: ${ACCESS_TOKEN_EXPIRATION:-900000}
+      REFRESH_TOKEN_EXPIRATION: ${REFRESH_TOKEN_EXPIRATION:-604800000}
+      # Local (http) development: Secure=false. Set true behind HTTPS in production.
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-refresh_token}
+      REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH:-/api/v1/auth}
+      REFRESH_COOKIE_SAME_SITE: ${REFRESH_COOKIE_SAME_SITE:-Lax}
+    # code-service is internal: only the gateway (8080) is published publicly.
+    # Port 8084 is NOT exposed, so the X-User-Id header it trusts can only
+    # originate from the gateway on codementor-net (network-level isolation).
     networks:
       - codementor-net
 
@@ -109,9 +122,8 @@ services:
       RABBITMQ_EXCHANGE: code-exchange
       RABBITMQ_ROUTINGKEY: code-routing-key
       RABBITMQ_QUEUE_NAME: code.analysis.queue
-      RABBITMQ_RESULT_EXCHANGE: code-exchange
-      RABBITMQ_RESULT_QUEUE: code.result.queue
-      RABBITMQ_RESULT_ROUTINGKEY: code.result.routing-key
+      # Shared Redis read-model TTL (matches gateway/code-service contract).
+      TASK_STATUS_TTL: ${TASK_STATUS_TTL:-24h}
     ports:
       - "8083:8083"
     networks:
@@ -136,6 +148,15 @@ services:
       CODE_MENTOR_RATE_LIMITER_REPLENISH_RATE: 2
       CODE_MENTOR_RATE_LIMITER_BURST_CAPACITY: 5
       CODE_MENTOR_RATE_LIMITER_REQUESTED_TOKENS: 1
+      # JWT auth: gateway and code-service share secret/issuer/audience (never committed)
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET environment variable is required (>= 256-bit base64)}
+      JWT_ISSUER: ${JWT_ISSUER:-codementor}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-api-gateway}
+      ACCESS_TOKEN_EXPIRATION: ${ACCESS_TOKEN_EXPIRATION:-900000}
+      # Auth brute-force protection (per-IP, on /api/v1/auth/**)
+      AUTH_RATELIMIT_MAX_ATTEMPTS: ${AUTH_RATELIMIT_MAX_ATTEMPTS:-10}
+      AUTH_RATELIMIT_WINDOW_SECONDS: ${AUTH_RATELIMIT_WINDOW_SECONDS:-60}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     ports:
       - "8080:8080"
     networks:

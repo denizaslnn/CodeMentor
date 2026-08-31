@@ -3,7 +3,7 @@ package com.codementor.codeservice.service;
 import com.codementor.codeservice.dto.CodeRequestDto;
 import com.codementor.codeservice.dto.TaskStatusResponseDto;
 import com.codementor.codeservice.entity.AnalysisRequest;
-import com.codementor.codeservice.exception.ResourceNotFoundException;
+import com.codementor.codeservice.event.TaskCreatedEvent;
 import com.codementor.codeservice.exception.TaskNotFoundException;
 import com.codementor.codeservice.publisher.TaskEventPublisher;
 import com.codementor.codeservice.repository.AnalysisRepository;
@@ -35,7 +35,6 @@ public class CodeAnalysisService {
 
         AnalysisRequest request = new AnalysisRequest();
         request.setId(taskId);
-        Objects.requireNonNull(requestDto.getSourceCode(), "sourceCode must not be null");
         request.setSourceCode(requestDto.getSourceCode());
         request.setPrompt(requestDto.getPrompt());
         request.setStatus("PENDING");
@@ -43,15 +42,12 @@ public class CodeAnalysisService {
 
         repository.save(request);
 
-        // Publish domain event; RabbitMqTaskPublisher will listen AFTER_COMMIT and publish to RabbitMQ/Redis
-        taskEventPublisher.publishTaskCreated(new com.codementor.codeservice.event.TaskCreatedEvent(taskId, requestDto.getSourceCode(), requestDto.getPrompt()));
+        // Publish domain event; RabbitMqTaskPublisher listens AFTER_COMMIT and
+        // publishes to RabbitMQ + writes the Redis PENDING status.
+        taskEventPublisher.publishTaskCreated(
+                new TaskCreatedEvent(taskId, requestDto.getSourceCode(), requestDto.getPrompt()));
 
         return taskId;
-    }
-
-    public AnalysisRequest getAnalysisById(String id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Aradığınız ID'ye ait bir analiz kaydı bulunamadı: " + id));
     }
 
     public TaskStatusResponseDto getTaskStatus(String taskId) {
@@ -61,7 +57,7 @@ public class CodeAnalysisService {
         }
 
         AnalysisRequest request = repository.findById(taskId)
-                .orElseThrow(() -> new TaskNotFoundException("Görev bulunamadı: " + taskId));
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
 
         return new TaskStatusResponseDto(taskId, request.getStatus(), request.getAiResponse());
     }
@@ -79,9 +75,9 @@ public class CodeAnalysisService {
             if (redisResult != null) {
                 return new TaskStatusResponseDto(taskId, redisStatusValue, redisResult);
             }
-
             AnalysisRequest request = repository.findById(taskId).orElse(null);
-            return new TaskStatusResponseDto(taskId, redisStatusValue, request != null ? request.getAiResponse() : null);
+            return new TaskStatusResponseDto(taskId, redisStatusValue,
+                    request != null ? request.getAiResponse() : null);
         }
 
         return new TaskStatusResponseDto(taskId, redisStatusValue, null);

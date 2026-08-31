@@ -1,51 +1,43 @@
 package com.codementor.aiservice.dto;
 
-import java.io.Serializable;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-public class CodeTaskMessage implements Serializable {
+/**
+ * RabbitMQ message contract: code-service -> ai-service.
+ * <p>
+ * Structurally mirrors {@code com.codementor.codeservice.dto.CodeTaskMessage}
+ * (same JSON field names). The previous contract was buggy: it leaked the user
+ * prompt into the {@code language} field and stored the code under {@code code}.
+ * This fixed contract uses explicit {@code sourceCode}/{@code prompt}/
+ * {@code language} fields so a real analyser engine can use the language.
+ */
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class CodeTaskMessage {
+
     private String taskId;
-    private String code;
+    private String sourceCode;
+    private String prompt;
     private String language;
-
-    public CodeTaskMessage() {
-    }
-
-    public CodeTaskMessage(String taskId, String code, String language) {
-        this.taskId = taskId;
-        this.code = code;
-        this.language = language;
-    }
-
-    public String getTaskId() {
-        return taskId;
-    }
-
-    public void setTaskId(String taskId) {
-        this.taskId = taskId;
-    }
-
-    public String getCode() {
-        return code;
-    }
-
-    public void setCode(String code) {
-        this.code = code;
-    }
-
-    public String getLanguage() {
-        return language;
-    }
-
-    public void setLanguage(String language) {
-        this.language = language;
-    }
 
     @Override
     public String toString() {
-        return "CodeTaskMessage{" +
-                "taskId='" + taskId + '\'' +
-                ", code='" + (code != null ? (code.length() > 30 ? code.substring(0, 30) + "..." : code) : null) + '\'' +
-                ", language='" + language + '\'' +
-                '}';
+        return "CodeTaskMessage{taskId='" + taskId + '\''
+                + ", sourceCode='" + truncate(sourceCode) + '\''
+                + ", prompt='" + truncate(prompt) + '\''
+                + ", language='" + language + '\''
+                + '}';
+    }
+
+    private static String truncate(String s) {
+        if (s == null) {
+            return null;
+        }
+        return s.length() > 30 ? s.substring(0, 30) + "..." : s;
     }
 }
