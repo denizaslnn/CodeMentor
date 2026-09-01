@@ -42,7 +42,7 @@ public class JwtTokenProvider {
     private final String audience;
     private SecretKey key;
 
-    public JwtTokenProvider(@Value("${jwt.secret}") String base64Secret,
+    public JwtTokenProvider(@Value("${jwt.secret:${JWT_SECRET:}}") String base64Secret,
                             @Value("${jwt.access-token-expiration:900000}") long accessTokenValidityMs,
                             @Value("${jwt.issuer:codementor}") String issuer,
                             @Value("${jwt.audience:api-gateway}") String audience) {

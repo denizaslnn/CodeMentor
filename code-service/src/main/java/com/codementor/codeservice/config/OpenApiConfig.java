@@ -3,10 +3,13 @@ package com.codementor.codeservice.config;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.servers.Server;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
 
 /**
  * OpenAPI/Swagger tanimi.
@@ -34,6 +37,11 @@ public class OpenApiConfig {
                                 .scheme("bearer")
                                 .bearerFormat("JWT")
                                 .description("api-gateway'in dogruladigi HS256 access token")))
+                // Force Swagger "Try it out" traffic to the current host (gateway),
+                // not directly to the downstream service port.
+                .servers(List.of(new Server()
+                        .url("/")
+                        .description("API Gateway")))
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME));
     }
 }

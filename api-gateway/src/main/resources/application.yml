@@ -28,6 +28,7 @@ spring:
               predicates:
                 - Path=/api/v1/**
               filters:
+                - PreserveHostHeader
                 - name: RequestRateLimiter
                   args:
                     redis-rate-limiter.replenishRate: 2
@@ -40,6 +41,8 @@ spring:
               uri: ${CODE_SERVICE_URI:http://localhost:8084}
               predicates:
                 - Path=/swagger-ui/**,/swagger-ui.html,/v3/api-docs/**,/v3/api-docs
+              filters:
+                - PreserveHostHeader
           globalcors:
             cors-configurations:
               '[/**]':

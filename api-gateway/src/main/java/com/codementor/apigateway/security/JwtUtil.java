@@ -63,7 +63,7 @@ public class JwtUtil {
      * and Spring cannot pick a candidate on its own in that case.
      */
     @Autowired
-    public JwtUtil(@Value("${jwt.secret}") String base64Secret,
+    public JwtUtil(@Value("${jwt.secret:${JWT_SECRET:}}") String base64Secret,
                    @Value("${jwt.access-token-expiration:900000}") long accessTokenValidityMs,
                    @Value("${jwt.issuer:" + DEFAULT_ISSUER + "}") String expectedIssuer,
                    @Value("${jwt.audience:" + DEFAULT_AUDIENCE + "}") String expectedAudience) {
