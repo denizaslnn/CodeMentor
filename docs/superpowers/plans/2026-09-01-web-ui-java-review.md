@@ -26,11 +26,10 @@
 `web-ui` container'i ayaga kalkar ve login formunu gosterir. Henuz JS yok.
 
 **Files:**
-- Create: `web-ui/index.html`
-- Create: `web-ui/styles.css`
+- Create: `web-ui/public/index.html`
+- Create: `web-ui/public/styles.css`
 - Create: `web-ui/nginx.conf`
 - Create: `web-ui/Dockerfile`
-- Create: `web-ui/.dockerignore`
 - Modify: `docker-compose.yml`
 
 **Interfaces:**
@@ -44,7 +43,7 @@
 
 - [ ] **Step 1: index.html'i yaz**
 
-`web-ui/index.html`:
+`web-ui/public/index.html`:
 
 ```html
 <!doctype html>
@@ -111,7 +110,7 @@
 
 - [ ] **Step 2: styles.css'i yaz**
 
-`web-ui/styles.css`:
+`web-ui/public/styles.css`:
 
 ```css
 :root {
@@ -264,19 +263,16 @@ server {
 ```dockerfile
 FROM nginx:alpine
 
+# nginx.conf ve Dockerfile imaj icine kopyalanmaz: yalnizca public/ servis edilir.
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY . /usr/share/nginx/html/
+COPY public/ /usr/share/nginx/html/
 
 EXPOSE 80
 ```
 
-`web-ui/.dockerignore`:
-
-```
-Dockerfile
-.dockerignore
-nginx.conf
-```
+Statik dosyalar `web-ui/public/` altinda durur; Dockerfile ve nginx.conf bir ust
+dizinde kalir. Boylece `.dockerignore` ile ugrasmadan yalnizca servis edilecek
+dosyalar imaja girer (nginx.conf'u ignore etmek COPY'yi de kirar).
 
 - [ ] **Step 4: Compose'a web-ui servisini ekle**
 
@@ -323,9 +319,9 @@ git commit -m "feat(web-ui): nginx container'i ve statik kabuk"
 Login/kayit calisir, sayfa yenilendiginde oturum cookie ile geri gelir, cikis yapilir.
 
 **Files:**
-- Create: `web-ui/api.js`
-- Create: `web-ui/app.js`
-- Modify: `web-ui/index.html` (sadece `</body>` oncesine script etiketi)
+- Create: `web-ui/public/api.js`
+- Create: `web-ui/public/app.js`
+- Modify: `web-ui/public/index.html` (sadece `</body>` oncesine script etiketi)
 
 **Interfaces:**
 - Consumes: Task 1'in DOM id'leri.
@@ -337,7 +333,7 @@ Login/kayit calisir, sayfa yenilendiginde oturum cookie ile geri gelir, cikis ya
 
 - [ ] **Step 1: api.js'i yaz**
 
-`web-ui/api.js`:
+`web-ui/public/api.js`:
 
 ```js
 /**
@@ -426,7 +422,7 @@ export const api = {
 
 - [ ] **Step 2: app.js'in auth kismini yaz**
 
-`web-ui/app.js`:
+`web-ui/public/app.js`:
 
 ```js
 import { api, setToken, clearToken, ApiError } from './api.js';
@@ -551,7 +547,7 @@ restoreSession();
 
 - [ ] **Step 3: index.html'e script etiketini ekle**
 
-`web-ui/index.html` icinde `</main>` ile `</body>` arasina ekle:
+`web-ui/public/index.html` icinde `</main>` ile `</body>` arasina ekle:
 
 ```html
   <script type="module" src="app.js"></script>
@@ -593,10 +589,10 @@ git commit -m "feat(web-ui): login/kayit akisi ve sessiz oturum kurtarma"
 Java kodu gonderilir, sonuc yeni sekmede kod blogu olarak gosterilir.
 
 **Files:**
-- Create: `web-ui/store.js`
-- Create: `web-ui/review.html`
-- Create: `web-ui/review.js`
-- Modify: `web-ui/app.js` (analiz bolumu eklenir)
+- Create: `web-ui/public/store.js`
+- Create: `web-ui/public/review.html`
+- Create: `web-ui/public/review.js`
+- Modify: `web-ui/public/app.js` (analiz bolumu eklenir)
 - Modify: `TEKNIK_DOKUMANTASYON.md`
 
 **Interfaces:**
@@ -605,7 +601,7 @@ Java kodu gonderilir, sonuc yeni sekmede kod blogu olarak gosterilir.
 
 - [ ] **Step 1: store.js'i yaz**
 
-`web-ui/store.js`:
+`web-ui/public/store.js`:
 
 ```js
 /**
@@ -659,7 +655,7 @@ function prune() {
 
 - [ ] **Step 2: app.js'e analiz akisini ekle**
 
-`web-ui/app.js` dosyasinda ilk satirdaki import'u su sekilde degistir:
+`web-ui/public/app.js` dosyasinda ilk satirdaki import'u su sekilde degistir:
 
 ```js
 import { api, setToken, clearToken, ApiError } from './api.js';
@@ -788,7 +784,7 @@ updateCounter();
 
 - [ ] **Step 3: review.html'i yaz**
 
-`web-ui/review.html`:
+`web-ui/public/review.html`:
 
 ```html
 <!doctype html>
@@ -831,7 +827,7 @@ updateCounter();
 
 - [ ] **Step 4: review.js'i yaz**
 
-`web-ui/review.js`:
+`web-ui/public/review.js`:
 
 ```js
 import { loadReview } from './store.js';

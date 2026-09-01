@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeMentor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">CodeMentor</span>
+    <div class="session" id="session" hidden>
+      <span id="who" class="muted"></span>
+      <button id="logout" class="ghost" type="button">Çıkış</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="auth-screen" class="card narrow">
+      <div class="tabs">
+        <button id="tab-login" class="tab active" type="button">Giriş</button>
+        <button id="tab-register" class="tab" type="button">Kayıt</button>
+      </div>
+      <form id="auth-form">
+        <label for="username">Kullanıcı adı</label>
+        <input id="username" name="username" autocomplete="username" required>
+        <label for="password">Şifre</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button id="auth-submit" type="submit">Giriş yap</button>
+      </form>
+      <p class="hint">Şifre en az 8 karakter olmalı; rakam, küçük harf, büyük harf ve özel karakter içermeli.</p>
+      <p id="auth-error" class="error" hidden></p>
+    </section>
+
+    <section id="editor-screen" hidden>
+      <div class="card">
+        <label for="code">Java kodu <span class="muted">(en fazla 10.000 karakter)</span></label>
+        <textarea id="code" spellcheck="false" placeholder="public class Ornek {&#10;    public static void main(String[] args) {&#10;    }&#10;}"></textarea>
+        <div class="row">
+          <span id="counter" class="muted">0 / 10000</span>
+        </div>
+
+        <label for="prompt">Sorun <span class="muted">(opsiyonel)</span></label>
+        <input id="prompt" placeholder="Örn. güvenlik açığı var mı?">
+
+        <div class="row">
+          <button id="analyze" type="button">Review et</button>
+          <span id="status" class="muted"></span>
+        </div>
+        <p id="analyze-error" class="error" hidden></p>
+      </div>
+
+      <div id="result-card" class="card" hidden>
+        <p>Review hazır.</p>
+        <button id="open-review" type="button">Review'i yeni sekmede aç</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

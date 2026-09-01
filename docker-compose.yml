@@ -192,6 +192,19 @@ services:
     networks:
       - codementor-net
 
+  web-ui:
+    build:
+      context: ./web-ui
+      dockerfile: Dockerfile
+    container_name: web-ui
+    depends_on:
+      api-gateway:
+        condition: service_started
+    ports:
+      - "3000:80"
+    networks:
+      - codementor-net
+
 volumes:
   postgres_data:
 
