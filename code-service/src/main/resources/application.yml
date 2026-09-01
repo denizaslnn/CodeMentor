@@ -2,6 +2,16 @@
   port: 8084
 
 spring:
+  # Yerel gelistirme: repo kokundeki .env dosyasi (Docker Compose'un okudugu ayni
+  # dosya) IDE'den calistirildiginda da okunur. Boylece secret tek bir yerde durur,
+  # IDE run configuration'ina elle environment variable girmeye gerek kalmaz.
+  # 'optional:' -> dosya yoksa uygulama yine acilir. Container icinde bu dosya
+  # bulunmaz; oradaki degerler zaten OS environment variable olarak gelir ve
+  # environment variable'lar config import'undan once gelir (onlar kazanir).
+  config:
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
   application:
     name: code-service
   messages:

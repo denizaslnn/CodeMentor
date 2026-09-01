@@ -1,0 +1,32 @@
+# Container icindeki servislere IDE'den remote debug (JDWP) baglanmak icin override.
+#
+# Kullanim:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d --build
+#
+# IntelliJ: Run > Edit Configurations > + > Remote JVM Debug
+#   Host: localhost, Port: asagidaki tablodan (code-service 5005, ai-service 5006,
+#   api-gateway 5007), "Attach to remote JVM".
+#
+# suspend=n -> uygulama debugger beklemeden acilir. Debugger'in baglanmasini
+# beklemesini istiyorsan ilgili satirda suspend=y yap.
+#
+# Bu dosya SADECE yerel gelistirme icindir; JDWP portu acik bir JVM'de kod
+# calistirmaya izin verir, production'da asla kullanilmaz.
+services:
+  code-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+    ports:
+      - "5005:5005"
+
+  ai-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5006"
+    ports:
+      - "5006:5006"
+
+  api-gateway:
+    environment:
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5007"
+    ports:
+      - "5007:5007"

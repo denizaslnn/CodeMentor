@@ -143,3 +143,103 @@ Sistem, AI analiz işlemlerinde kullanıcı tarafında zaman aşımını (timeou
 * **Cache Miss & Fallback Mekanizması:** Sistem okuma operasyonları için Redis'e güvenir. Ancak Redis üzerinde bir veri kaybı yaşanırsa, sistem otomatik olarak PostgreSQL üzerinden (Fallback) sorgulama yaparak veri tutarlılığını garanti altına alır.
 * **Global Exception Handling:** Projedeki tüm servislerde hata yönetimi standartlaştırılmıştır. Dağınık `try-catch` blokları yerine, Spring `@RestControllerAdvice` kullanılarak hatalar (401, 404, 500 vb.) istemciye standart bir JSON sözleşmesiyle dönülür.
 * **Konteynerizasyon:** Altyapının tüm bağımlılıkları Dockerize edilmiştir. `docker-compose up` komutuyla platformdan bağımsız olarak tek tuşla ayağa kalkabilir. Tüm loglamalar performanslı izleme için Lombok (`@Slf4j`) ile asenkron olarak yazılmaktadır.
+---
+
+## 7. Yerel Çalıştırma ve Debug
+
+### 7.1. Tek seferlik kurulum: `.env`
+
+Servisler `JWT_SECRET` olmadan **bilerek açılmaz** (`JwtUtil.init` / `JwtTokenProvider.init`
+fail-fast eder). Varsayılan bir secret'a düşmek güvenlik açığı olurdu. Secret repoda
+tutulmaz, `.env` gitignore'dadır.
+
+```bash
+cp .env.example .env
+```
+
+Sonra `.env` içindeki `JWT_SECRET` satırını doldur:
+
+```bash
+# Linux / macOS
+openssl rand -base64 48
+```
+```powershell
+# Windows (PowerShell)
+[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+```
+
+> **Önemli:** `api-gateway` ile `code-service` **aynı** secret'ı kullanmak zorundadır.
+> Farklı olursa uygulamalar sorunsuz açılır ama gateway imzayı doğrulayamadığı için
+> her istek `401` döner. Aynı `.env` dosyası her iki servise de gittiği için bu
+> kurulumda kendiliğinden sağlanır.
+
+Bu **tek** dosya hem Docker Compose hem de IDE tarafından okunur:
+
+| Nereden çalışıyor | `.env` nasıl okunuyor |
+|---|---|
+| Docker Compose | Compose kök dizindeki `.env`'i okuyup değerleri container'a environment variable olarak geçirir |
+| IDE (run/debug) | Servislerin `application.yml`'indeki `spring.config.import: optional:file:../.env[.properties]` |
+
+IDE run configuration'ına elle environment variable girmeye gerek yoktur.
+Container içinde `.env` dosyası bulunmaz; oradaki değerler environment variable
+olarak gelir ve environment variable'lar config import'unu ezer.
+
+> `.env` Spring tarafından `.properties` olarak parse edilir: satır **sonuna**
+> yorum yazma (`ACCESS_TOKEN_EXPIRATION=900000  # 15 dk`), yorum değerin parçası olur.
+> Yorumlar kendi satırında, `#` ile başlamalıdır.
+
+### 7.2. Senaryo A — Her şey Docker'da
+
+```bash
+docker compose up -d --build
+```
+
+| Adres | Ne |
+|---|---|
+| http://localhost:8080 | api-gateway (tek public giriş) |
+| http://localhost:8080/swagger-ui/index.html | Swagger UI |
+| http://localhost:8080/v3/api-docs | OpenAPI JSON |
+| http://localhost:8080/actuator/health | Gateway health |
+| http://localhost:15672 | RabbitMQ yönetim arayüzü (guest/guest) |
+
+`code-service` (8084) bilerek dışa kapalıdır: gateway'in bastığı `X-User-Id`
+header'ına güvenir, doğrudan erişilebilir olsaydı bu header spoof edilebilirdi.
+
+### 7.3. Senaryo B — Altyapı Docker'da, servisler IDE'de (önerilen debug yolu)
+
+Sadece altyapıyı kaldır, servisleri IDE'den normal şekilde debug modda başlat:
+
+```bash
+docker compose up -d postgres redis rabbitmq
+```
+
+`application.yml` varsayılanları `localhost`'u gösterdiği için ek ayar gerekmez;
+`.env` de otomatik okunur. Aynı servis hem Docker'da hem IDE'de çalışırsa port
+çakışır — IDE'den çalıştıracağın servisi Docker'da durdur:
+
+```bash
+docker compose stop api-gateway code-service
+```
+
+### 7.4. Senaryo C — Container içindeki servise remote debug
+
+Servisleri Docker'da bırakıp IDE'den JDWP ile bağlanmak için debug override'ı kullan:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d --build
+```
+
+IntelliJ: **Run > Edit Configurations > + > Remote JVM Debug**, Host `localhost`,
+Port aşağıdaki tablodan, mod "Attach to remote JVM".
+
+| Servis | Debug portu |
+|---|---|
+| code-service | 5005 |
+| ai-service | 5006 |
+| api-gateway | 5007 |
+
+`suspend=n` olduğu için uygulamalar debugger'ı beklemeden açılır; breakpoint'in
+uygulama açılışında dursun istiyorsan `docker-compose.debug.yml` içinde `suspend=y` yap.
+
+> Debug override'ı yalnızca yerel geliştirme içindir. Açık bir JDWP portu, JVM'de
+> kod çalıştırılmasına izin verir; production'da asla kullanılmaz.
