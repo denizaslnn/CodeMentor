@@ -243,3 +243,54 @@ uygulama açılışında dursun istiyorsan `docker-compose.debug.yml` içinde `s
 
 > Debug override'ı yalnızca yerel geliştirme içindir. Açık bir JDWP portu, JVM'de
 > kod çalıştırılmasına izin verir; production'da asla kullanılmaz.
+
+---
+
+## 8. Kod Analiz Motoru (AI Tarafı)
+
+`ai-service` analizi `CodeAnalysisEngine` arayüzü üzerinden yapar. İki implementasyon
+vardır ve seçim `ai.engine` (env: `AI_ENGINE`) ile yapılır:
+
+| `AI_ENGINE` | Motor | Davranış |
+|---|---|---|
+| `mock` (veya boş) | `MockCodeAnalysisEngine` | HTTP çağrısı yok, sabit metin döner |
+| `openai` | `OpenAiCompatibleCodeAnalysisEngine` | `{base-url}/v1/chat/completions` çağrılır |
+
+vLLM ve OpenAI aynı API şemasını konuşur, bu yüzden tek istemci hepsine yeter.
+Hangi sağlayıcıya gidileceği tamamen config'tir:
+
+| Hedef | `AI_OPENAI_BASE_URL` | `AI_OPENAI_MODEL` | `OPENAI_API_KEY` |
+|---|---|---|---|
+| Yerel mock (varsayılan) | `http://mock-vllm:8000` | `mock-code-analyzer` | boş |
+| Kendi vLLM sunucun | `http://<host>:8000` | sunucudaki model id | boş veya key |
+| Gerçek ChatGPT | `https://api.openai.com/v1` | `gpt-4o-mini` | `sk-...` |
+
+`OPENAI_API_KEY` boş bırakılırsa `Authorization` header'ı hiç gönderilmez. Key yalnızca
+`.env`'den okunur (gitignored) ve hiçbir log satırına yazılmaz.
+
+Analiz çağrısı başarısız olursa (upstream hatası, timeout, boş cevap)
+`AnalysisEngineException` fırlatılır ve mevcut `CodeTaskProcessingService` task'ı
+`FAILED` olarak kaydeder — kuyruk zehirlenmez.
+
+### mock-vllm servisi
+
+`mock-vllm/` altında, FastAPI ile yazılmış küçük bir servistir. Gerçek model
+çalıştırmaz; her isteğe aynı dummy metni döner. Amacı AI tarafını gerçek bir
+sağlayıcıya ihtiyaç duymadan test edilebilir kılmaktır.
+
+| Adres | Ne |
+|---|---|
+| http://localhost:8000/docs | Mock servisin kendi Swagger sayfası |
+| http://localhost:8000/v1/chat/completions | OpenAI uyumlu chat endpoint'i |
+| http://localhost:8000/v1/models | Sahte model listesi |
+| http://localhost:8000/health | Healthcheck |
+
+Streaming (`stream: true`) desteklenmez.
+
+Testleri çalıştırmak için:
+
+```bash
+cd mock-vllm
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest -q
+```

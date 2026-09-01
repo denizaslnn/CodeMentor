@@ -1,14 +1,18 @@
 package com.codementor.aiservice.service;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * MOCK analiz motoru (vLLM entegrasyonuna kadar kalıcı).
- * Davranış bilinçli olarak korunmuştur: ~3 saniye simülasyon süresi +
- * sabit başarı mesajı. vLLM aşamasında bu sınıf yerine
- * {@code VllmCodeAnalysisEngine} devreye alınacaktır.
+ * MOCK analiz motoru: HTTP cagrisi yapmaz, sabit metin doner.
+ * <p>
+ * {@code ai.engine} verilmezse veya {@code mock} ise devrededir
+ * ({@code matchIfMissing = true}), yani mevcut davranis korunur.
+ * {@code ai.engine=openai} verildiginde yerini
+ * {@link OpenAiCompatibleCodeAnalysisEngine} alir.
  */
 @Component
+@ConditionalOnProperty(name = "ai.engine", havingValue = "mock", matchIfMissing = true)
 public class MockCodeAnalysisEngine implements CodeAnalysisEngine {
 
     @Override

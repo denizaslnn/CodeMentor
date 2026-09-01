@@ -51,6 +51,23 @@ services:
     networks:
       - codementor-net
 
+  mock-vllm:
+    build:
+      context: ./mock-vllm
+      dockerfile: Dockerfile
+    container_name: mock-vllm
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      # Elle curl ve FastAPI'nin kendi /docs sayfasi icin host'a acilir.
+      - "8000:8000"
+    networks:
+      - codementor-net
+
   code-service:
     build:
       context: ./code-service
@@ -110,6 +127,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      mock-vllm:
+        condition: service_healthy
     environment:
       SERVER_PORT: 8083
       SPRING_DATASOURCE_URL: jdbc:p6spy:postgresql://postgres:5432/code_analysis_db
@@ -127,6 +146,13 @@ services:
       RABBITMQ_QUEUE_NAME: code.analysis.queue
       # Shared Redis read-model TTL (matches gateway/code-service contract).
       TASK_STATUS_TTL: ${TASK_STATUS_TTL:-24h}
+      # Analiz motoru: varsayilan olarak yerel mock-vllm servisine baglanir.
+      # Gercek ChatGPT icin: AI_OPENAI_BASE_URL=https://api.openai.com/v1,
+      # AI_OPENAI_MODEL=gpt-4o-mini ve .env icinde OPENAI_API_KEY.
+      AI_ENGINE: ${AI_ENGINE:-openai}
+      AI_OPENAI_BASE_URL: ${AI_OPENAI_BASE_URL:-http://mock-vllm:8000}
+      AI_OPENAI_MODEL: ${AI_OPENAI_MODEL:-mock-code-analyzer}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "8083:8083"
     networks:

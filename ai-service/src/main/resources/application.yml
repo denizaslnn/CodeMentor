@@ -73,3 +73,18 @@ logging:
     org.hibernate.engine.jdbc.spi.SqlStatementLogger: OFF
     org.hibernate.type.descriptor.sql.BasicBinder: OFF
     p6spy: INFO
+
+# Kod analiz motoru secimi.
+#   mock   -> in-process sahte motor (HTTP cagrisi yok, sabit metin)
+#   openai -> OpenAI uyumlu HTTP endpoint (mock-vllm, kendi vLLM'imiz veya api.openai.com)
+# Property hic verilmezse mock devrede kalir.
+ai:
+  engine: ${AI_ENGINE:mock}
+  openai:
+    # Gercek ChatGPT icin: https://api.openai.com/v1 + gpt-4o-mini + OPENAI_API_KEY
+    base-url: ${AI_OPENAI_BASE_URL:http://localhost:8000}
+    model: ${AI_OPENAI_MODEL:mock-code-analyzer}
+    # Bos birakilirsa Authorization header'i hic gonderilmez (mock / auth'suz vLLM).
+    api-key: ${OPENAI_API_KEY:}
+    connect-timeout: ${AI_OPENAI_CONNECT_TIMEOUT:5s}
+    read-timeout: ${AI_OPENAI_READ_TIMEOUT:60s}
