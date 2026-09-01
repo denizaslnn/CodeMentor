@@ -9,6 +9,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -57,7 +58,8 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.warn("Missing or invalid Authorization header for {}", path);
-            return unauthorizedResponseWriter.write(exchange, "Authorization header missing or invalid format.");
+            return unauthorizedResponseWriter.write(exchange, HttpStatus.UNAUTHORIZED,
+                    "error.auth.unauthorized", "UNAUTHORIZED");
         }
 
         String token = authHeader.substring(7);
@@ -66,7 +68,8 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
 
             if (!jwtUtil.hasRequiredClaims(jws)) {
                 log.warn("JWT is missing required claims for {}", path);
-                return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
+                return unauthorizedResponseWriter.write(exchange, HttpStatus.UNAUTHORIZED,
+                        "error.auth.unauthorized", "UNAUTHORIZED");
             }
 
             // Extract user id (subject or userId claim) and role for downstream services
@@ -125,8 +128,9 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
                         return chain.filter(finalExchange.mutate().request(mutated).build());
                     });
         } catch (JwtException ex) {
-            log.error("JWT validation failed: {}", ex.getMessage());
-            return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
+            log.warn("JWT validation failed for {}", path);
+            return unauthorizedResponseWriter.write(exchange, HttpStatus.UNAUTHORIZED,
+                    "error.auth.unauthorized", "UNAUTHORIZED");
         }
     }
 

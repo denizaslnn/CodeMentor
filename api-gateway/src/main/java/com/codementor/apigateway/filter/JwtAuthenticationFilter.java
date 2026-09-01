@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -48,7 +49,8 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 log.warn("Authorization header missing or invalid format");
-                return unauthorizedResponseWriter.write(exchange, "Authorization header missing or invalid format.");
+                return unauthorizedResponseWriter.write(exchange, HttpStatus.UNAUTHORIZED,
+                        "error.auth.unauthorized", "UNAUTHORIZED");
             }
 
             String token = authHeader.substring(7);
@@ -57,7 +59,8 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
 
                 if (!jwtUtil.hasRequiredClaims(jws)) {
                     log.warn("JWT is missing required claims");
-                    return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
+                    return unauthorizedResponseWriter.write(exchange, HttpStatus.UNAUTHORIZED,
+                            "error.auth.unauthorized", "UNAUTHORIZED");
                 }
 
                 // Prefer explicit userId claim, fallback to subject
@@ -81,8 +84,9 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 return chain.filter(mutated);
 
             } catch (JwtException ex) {
-                log.error("JWT validation failed: {}", ex.getMessage());
-                return unauthorizedResponseWriter.write(exchange, "JWT token is invalid or expired.");
+                log.warn("JWT validation failed");
+                return unauthorizedResponseWriter.write(exchange, HttpStatus.UNAUTHORIZED,
+                        "error.auth.unauthorized", "UNAUTHORIZED");
             }
         };
     }

@@ -1,7 +1,6 @@
 package com.codementor.apigateway.filter;
 
 import com.codementor.apigateway.security.AuthRateLimiter;
-import com.codementor.apigateway.security.SecurityHeaders;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -13,7 +12,6 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Per-IP brute-force protection for authentication endpoints
@@ -33,9 +31,11 @@ public class AuthRateLimitWebFilter implements GlobalFilter, Ordered {
     static final String AUTH_PREFIX = "/api/v1/auth/";
 
     private final AuthRateLimiter rateLimiter;
+    private final UnauthorizedResponseWriter unauthorizedResponseWriter;
 
-    public AuthRateLimitWebFilter(AuthRateLimiter rateLimiter) {
+    public AuthRateLimitWebFilter(AuthRateLimiter rateLimiter, UnauthorizedResponseWriter unauthorizedResponseWriter) {
         this.rateLimiter = rateLimiter;
+        this.unauthorizedResponseWriter = unauthorizedResponseWriter;
     }
 
     @Override
@@ -65,13 +65,10 @@ public class AuthRateLimitWebFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<Void> tooManyRequests(ServerWebExchange exchange, int retryAfterSeconds) {
-        exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
         exchange.getResponse().getHeaders().set(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
-        SecurityHeaders.apply(exchange.getResponse().getHeaders());
-        String message = "Too many authentication attempts. Please try again later.";
-        String body = "{\"success\":false,\"message\":\"" + message + "\",\"errorCode\":\"TOO_MANY_REQUESTS\",\"httpStatusCode\":429}";
-        return exchange.getResponse()
-                .writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8))))
+        return unauthorizedResponseWriter
+                .write(exchange, HttpStatus.TOO_MANY_REQUESTS,
+                        "error.auth.too-many-requests", "TOO_MANY_REQUESTS")
                 .doOnTerminate(() -> log.debug("Returned 429 for auth rate-limit."));
     }
 

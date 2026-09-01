@@ -16,13 +16,12 @@
     <name>code-service</name>
     <description>Code Analysis Service for CodeMentor</description>
 
-    <properties>
-        <java.version>17</java.version>
-        <!-- Spring Boot 3.3.0'in pinledigi Lombok 1.18.32, JDK 23+ ile derlenemiyor
-             (javac TypeTag :: UNKNOWN). Docker imaji JDK 21 kullanir, ancak yerel
-             gelistirme JDK'si daha yeni olabildigi icin surum yukseltildi. -->
-        <lombok.version>1.18.46</lombok.version>
-    </properties>
+        <properties>
+            <java.version>17</java.version>
+            <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+            <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+            <lombok.version>1.18.46</lombok.version>
+        </properties>
 
     <dependencies>
         <!-- Web Desteği (Controller için) -->
@@ -157,7 +156,27 @@
     </dependencies>
 
         <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <configuration>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-Dfile.encoding=UTF-8</argLine>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

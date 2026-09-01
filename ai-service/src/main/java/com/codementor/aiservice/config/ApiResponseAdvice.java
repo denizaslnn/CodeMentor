@@ -19,6 +19,9 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 @RequiredArgsConstructor
 public class ApiResponseAdvice implements ResponseBodyAdvice<Object> {
 
+    private static final String DEFAULT_LANGUAGE = "tr";
+    private static final String ENGLISH = "en";
+
     private final MessageSource messageSource;
 
     @Override
@@ -40,7 +43,7 @@ public class ApiResponseAdvice implements ResponseBodyAdvice<Object> {
         if (body instanceof ApiResponse<?> apiResponse) {
             String messageKey = apiResponse.getMessage();
             if (messageKey != null && !messageKey.isBlank()) {
-                String localizedMessage = msg(messageKey, messageKey, apiResponse.getArgs());
+                String localizedMessage = resolve(messageKey, apiResponse.getArgs());
                 return ApiResponse.builder()
                         .success(apiResponse.isSuccess())
                         .message(localizedMessage)
@@ -53,12 +56,13 @@ public class ApiResponseAdvice implements ResponseBodyAdvice<Object> {
         return body;
     }
 
-    private String msg(String key, String fallback, Object[] args) {
+        private String resolve(String messageKey, Object[] args) {
+        java.util.Locale locale = LocaleContextHolder.getLocale();
         try {
-            return messageSource.getMessage(key, args, LocaleContextHolder.getLocale());
-        } catch (Exception e) {
-            log.trace("Message key not found: {}", key);
-            return fallback;
+            return messageSource.getMessage(messageKey, args, locale);
+        } catch (Exception ignored) {
+            log.warn("Message key could not be resolved: key={}, locale={}", messageKey, locale);
+            return messageKey;
         }
     }
 }

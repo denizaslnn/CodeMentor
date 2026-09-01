@@ -2,10 +2,8 @@ package com.codementor.codeservice.exception;
 
 import com.codementor.codeservice.dto.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.MessageSource;
-import org.springframework.context.i18n.LocaleContextHolder;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -22,10 +20,7 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 @Slf4j
-@RequiredArgsConstructor
 public class GlobalExceptionHandler {
-
-    private final MessageSource messageSource;
 
     // --- Domain hataları: status'u burada eşleştir ---
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -60,25 +55,41 @@ public class GlobalExceptionHandler {
     }
 
     // --- Bean validation (@Valid) ---
-    @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
-    public ResponseEntity<ApiResponse<Void>> handleValidation(BindException ex) {
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
         String detail = ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        log.warn("Validation failed: {}", detail);
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
-                        .message(detail)
-                        .errorCode("VALIDATION_FAILED")
-                        .httpStatusCode(400)
-                        .build());
+        return validationFailed(detail);
+    }
+
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBindException(BindException ex) {
+        String detail = ex.getBindingResult().getFieldErrors().stream()
+                .map(f -> f.getField() + ": " + f.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        return validationFailed(detail);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
+        String detail = ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .collect(Collectors.joining("; "));
+        return validationFailed(detail);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("Invalid request argument: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(
+                "error.generic.invalid.request", "INVALID_REQUEST", 400));
     }
 
     // --- DB çakışması ---
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConflict(Exception ex) {
-        log.warn("Data conflict: {}", ex.getMessage());
+        log.warn("Data conflict: {}", ex.getClass().getSimpleName());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(
                 "error.generic.conflict", "RESOURCE_CONFLICT", 409));
     }
@@ -95,7 +106,7 @@ public class GlobalExceptionHandler {
     // --- Bilinmeyen path: catch-all'a dusup 500 olmamali, 404 donmeli ---
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<ApiResponse<Void>> handleNotFound(Exception ex) {
-        log.warn("No handler for request: {}", ex.getMessage());
+        log.warn("No handler for request: {}", ex.getClass().getSimpleName());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(
                 "error.resource.notfound", "NOT_FOUND", 404));
     }
@@ -103,10 +114,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex, HttpServletRequest request) {
         if (isClientAbort(ex)) {
-            log.debug("Client disconnected: {}", ex.getMessage());
+            log.warn("Client disconnected during response write.");
             return ResponseEntity.noContent().build();
         }
-        log.error("Unhandled error at {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+        log.error("Unhandled error at {}", request.getRequestURI(), ex);
         return ResponseEntity.status(500).body(ApiResponse.error(
                 "error.generic.unexpected", "INTERNAL_ERROR", 500));
     }
@@ -123,13 +134,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(ApiResponse.error(ex.getMessageKey(), ex.getErrorCode(), status.value(), ex.getArgs()));
     }
 
-    private String msg(String key, String fallback, Object... args) {
-        try {
-            return messageSource.getMessage(key, args, LocaleContextHolder.getLocale());
-        } catch (Exception e) {
-            log.warn("Missing message key: {}", key);
-            return fallback;
-        }
+    private ResponseEntity<ApiResponse<Void>> validationFailed(String detail) {
+        log.warn("Validation failed: {}", detail);
+        return ResponseEntity.badRequest().body(ApiResponse.error(
+                "error.validation.failed", "VALIDATION_FAILED", 400));
     }
 
     private static boolean isClientAbort(Throwable t) {
