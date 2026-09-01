@@ -29,7 +29,7 @@ class JwtGlobalFilterTest {
 
     @Test
     void validToken_withBody_addsUserHeadersAndContinuesChain() {
-        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), new UnauthorizedResponseWriter());
+        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), TestResponseWriter.create());
         String token = jwtUtil().generateToken("user-42", "alice", "USER");
 
         MockServerHttpRequest request = MockServerHttpRequest.post("/api/v1/analyze")
@@ -53,7 +53,7 @@ class JwtGlobalFilterTest {
 
     @Test
     void missingAuthorizationHeader_returns401() {
-        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), new UnauthorizedResponseWriter());
+        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), TestResponseWriter.create());
 
         MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/status/abc").build();
         ServerWebExchange exchange = MockServerWebExchange.from(request);
@@ -70,7 +70,7 @@ class JwtGlobalFilterTest {
 
     @Test
     void expiredToken_returns401() {
-        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), new UnauthorizedResponseWriter());
+        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), TestResponseWriter.create());
         String expiredToken = jwtUtil().generateToken("u-1", "alice", "USER", -60_000L);
 
         MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/status/abc")
@@ -85,7 +85,7 @@ class JwtGlobalFilterTest {
 
     @Test
     void authPath_isWhitelisted() {
-        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), new UnauthorizedResponseWriter());
+        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), TestResponseWriter.create());
 
         MockServerHttpRequest request = MockServerHttpRequest.post("/api/v1/auth/refresh").build();
         ServerWebExchange exchange = MockServerWebExchange.from(request);
@@ -102,7 +102,7 @@ class JwtGlobalFilterTest {
 
     @Test
     void clientSuppliedTrustedHeaders_areOverwrittenWithJwtClaims() {
-        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), new UnauthorizedResponseWriter());
+        JwtGlobalFilter filter = new JwtGlobalFilter(jwtUtil(), TestResponseWriter.create());
         String token = jwtUtil().generateToken("user-42", "alice", "USER");
 
         MockServerHttpRequest request = MockServerHttpRequest.post("/api/v1/analyze")

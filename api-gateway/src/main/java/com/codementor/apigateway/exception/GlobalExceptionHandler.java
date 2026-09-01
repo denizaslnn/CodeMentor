@@ -7,15 +7,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.servlet.NoHandlerFoundException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -62,19 +59,12 @@ public class GlobalExceptionHandler {
         return validationFailed(exchange, detail);
     }
 
-    @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException ex,
-                                                                  ServerWebExchange exchange) {
-        log.warn("Authentication failed at path={}", exchange.getRequest().getPath().value());
-        return error(HttpStatus.UNAUTHORIZED, "error.auth.unauthorized", "UNAUTHORIZED", exchange);
-    }
-
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex,
-                                                                ServerWebExchange exchange) {
-        log.warn("Access denied at path={}", exchange.getRequest().getPath().value());
-        return error(HttpStatus.FORBIDDEN, "error.auth.forbidden", "FORBIDDEN", exchange);
-    }
+    // NOT: Spring Security'nin AuthenticationException/AccessDeniedException
+    // handler'lari buradan cikarildi. Gateway'de spring-security bagimliligi yok;
+    // kimlik dogrulama JwtGlobalFilter/JwtAuthenticationFilter tarafindan yapilir ve
+    // 401/403 govdeleri UnauthorizedResponseWriter uzerinden ayni ApiResponse
+    // formatinda yazilir (error.auth.unauthorized / error.auth.forbidden ayni
+    // message key'leri oradan kullanilir).
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex,
@@ -83,10 +73,22 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, "error.generic.invalid.request", "INVALID_REQUEST", exchange);
     }
 
-    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
-    public ResponseEntity<ApiResponse<Void>> handleNotFound(Exception ex, ServerWebExchange exchange) {
-        log.warn("No route found for path={}", exchange.getRequest().getPath().value());
-        return error(HttpStatus.NOT_FOUND, "error.resource.notfound", "NOT_FOUND", exchange);
+    /**
+     * WebFlux karsiligi: servlet'e ozgu NoHandlerFoundException/NoResourceFoundException
+     * reaktif stack'te yoktur, eslesmeyen istek ResponseStatusException olarak gelir.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex, ServerWebExchange exchange) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        if (status == HttpStatus.NOT_FOUND) {
+            log.warn("No route found for path={}", exchange.getRequest().getPath().value());
+            return error(status, "error.resource.notfound", "NOT_FOUND", exchange);
+        }
+        log.warn("Request failed at path={} with status={}", exchange.getRequest().getPath().value(), status);
+        return error(status, "error.generic.unexpected", "INTERNAL_ERROR", exchange);
     }
 
     @ExceptionHandler(Exception.class)

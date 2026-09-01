@@ -3,7 +3,9 @@ package com.codementor.apigateway.filter;
 import com.codementor.apigateway.config.LocalizedMessageResolver;
 import com.codementor.apigateway.dto.ApiResponse;
 import com.codementor.apigateway.security.SecurityHeaders;
-import com.fasterxml.jackson.databind.ObjectMapper;
+// Spring Boot 4 -> Jackson 3: databind paketi tools.jackson.databind, ve
+// auto-configure edilen ObjectMapper bean'i de bu tiptedir.
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBuffer;

@@ -34,10 +34,18 @@ public class LocalizedMessageResolver {
     }
 
     private Locale resolveLocale(ServerWebExchange exchange) {
-        List<Locale> locales = exchange.getRequest().getHeaders().getAcceptLanguageAsLocales();
-        if (locales.isEmpty()) {
-            return Locale.forLanguageTag(DEFAULT_LANGUAGE);
+        // Mesajlar yalnizca messages_tr / messages_en icinde tanimli. Desteklenmeyen
+        // bir dil (orn. Accept-Language: de) dogrudan kullanilirsa bundle bulunamayip
+        // ham message key donuyordu; bu yuzden yalnizca desteklenen diller kabul
+        // edilir, digerleri varsayilan dile duser.
+        for (Locale locale : exchange.getRequest().getHeaders().getAcceptLanguageAsLocales()) {
+            if (ENGLISH.equals(locale.getLanguage())) {
+                return Locale.ENGLISH;
+            }
+            if (DEFAULT_LANGUAGE.equals(locale.getLanguage())) {
+                return Locale.forLanguageTag(DEFAULT_LANGUAGE);
+            }
         }
-        return locales.get(0);
+        return Locale.forLanguageTag(DEFAULT_LANGUAGE);
     }
 }

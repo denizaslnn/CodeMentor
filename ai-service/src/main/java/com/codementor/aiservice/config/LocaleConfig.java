@@ -7,6 +7,7 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 
+import java.util.List;
 import java.util.Locale;
 
 @Configuration
@@ -15,7 +16,12 @@ public class LocaleConfig {
     @Bean
     public LocaleResolver localeResolver() {
         AcceptHeaderLocaleResolver slr = new AcceptHeaderLocaleResolver();
-        slr.setDefaultLocale(new Locale("tr"));
+        // Hata/basari mesajlari yalnizca messages_tr / messages_en icinde tanimli.
+        // Desteklenen diller sinirlanmazsa "Accept-Language: de" gibi bir istek
+        // messages_de -> base bundle zincirinde bulunamayip ham message key
+        // donduruyordu; simdi desteklenmeyen diller tr'ye dusuyor.
+        slr.setSupportedLocales(List.of(Locale.forLanguageTag("tr"), Locale.ENGLISH));
+        slr.setDefaultLocale(Locale.forLanguageTag("tr"));
         return slr;
     }
 

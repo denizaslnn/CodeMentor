@@ -31,7 +31,7 @@ class AuthRateLimitWebFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new AuthRateLimitWebFilter(rateLimiter);
+        filter = new AuthRateLimitWebFilter(rateLimiter, TestResponseWriter.create());
     }
 
     @Test

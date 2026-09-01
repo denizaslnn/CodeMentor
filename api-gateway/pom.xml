@@ -45,6 +45,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- JSON hata govdeleri (UnauthorizedResponseWriter). Gateway starter'i
+             jackson'i transitif getirmiyor. Ham jackson-databind yetmez: ObjectMapper
+             bean'ini olusturan autoconfiguration bu starter ile gelir. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

@@ -35,13 +35,13 @@ class JwtAuthenticationFilterTest {
     }
 
     private JwtAuthenticationFilter newFilter() {
-        return new JwtAuthenticationFilter(jwtUtil(), new UnauthorizedResponseWriter());
+        return new JwtAuthenticationFilter(jwtUtil(), TestResponseWriter.create());
     }
 
     @Test
     void validToken_isAccepted_andAddsUserHeaders() {
         JwtUtil jwtUtil = jwtUtil();
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, new UnauthorizedResponseWriter());
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, TestResponseWriter.create());
         String token = buildToken(jwtUtil, "user-42", "alice", "USER",
                 new Date(System.currentTimeMillis() + 60_000));
 
@@ -109,7 +109,7 @@ class JwtAuthenticationFilterTest {
     @Test
     void expiredToken_isRejected() {
         JwtUtil jwtUtil = jwtUtil();
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, new UnauthorizedResponseWriter());
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, TestResponseWriter.create());
         String expiredToken = buildToken(jwtUtil, "expired-user", "alice", "USER",
                 new Date(System.currentTimeMillis() - 60_000));
 
@@ -191,7 +191,7 @@ class JwtAuthenticationFilterTest {
     @Test
     void clientSuppliedTrustedHeaders_cannotSpoofJwtClaims() {
         JwtUtil jwtUtil = jwtUtil();
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, new UnauthorizedResponseWriter());
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, TestResponseWriter.create());
         String token = buildToken(jwtUtil, "user-42", "alice", "USER",
                 new Date(System.currentTimeMillis() + 60_000));
 
