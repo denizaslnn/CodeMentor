@@ -294,3 +294,47 @@ cd mock-vllm
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest -q
 ```
+
+---
+
+## 9. Web Arayüzü (web-ui)
+
+`web-ui/` altında, nginx ile servis edilen statik bir arayüz. Tarayıcı doğrudan
+gateway'e (`http://localhost:8080`) konuşur; gateway'in `CORS_ALLOWED_ORIGINS`
+değeri `http://localhost:3000` olduğu için ek yapılandırma gerekmez.
+
+**Adres:** http://localhost:3000
+
+| Dosya | Sorumluluk |
+|---|---|
+| `public/index.html` | Login/kayıt + kod gönderme ekranı |
+| `public/review.html` | Yeni sekmede sonuç görünümü |
+| `public/api.js` | Gateway HTTP istemcisi (DOM bilmez) |
+| `public/app.js` | Ana ekran akışı: auth, analiz, polling |
+| `public/store.js` | Review sonuçlarının localStorage deposu |
+| `public/review.js` | Sonuç sekmesinin render'ı |
+| `nginx.conf`, `Dockerfile` | Servis yapılandırması (imaja `public/` girer) |
+
+### Akış
+
+Giriş → Java kodu yapıştır → "Review et" → `POST /api/v1/analyze` →
+`GET /api/v1/status/{taskId}` 2 saniyede bir yoklanır (gateway limiti 2 token/sn) →
+`COMPLETED` olunca sonuç `localStorage`'a yazılır ve `review.html?taskId=...`
+yeni sekmede açılır: solda gönderilen kod, sağda review.
+
+### Oturum
+
+Access token **yalnızca bellekte** tutulur, `localStorage`'a yazılmaz. Sayfa
+yenilendiğinde açılışta sessizce `POST /api/v1/auth/refresh` denenir; refresh token
+httpOnly cookie'de olduğu için oturum korunur. Ekranda görünen kullanıcı adı
+access token'ın payload'ından okunur.
+
+### Bilinen sınırlar
+
+- Yalnızca Java hedeflenir. Backend'de `language` alanı olmadığı için dil bilgisi
+  `prompt` üzerinden gider (`"Dil: Java. ..."`).
+- Yeni sekme async bir işlemden sonra açıldığı için popup blocker'a takılabilir;
+  bu durumda ana ekrandaki "Review'i yeni sekmede aç" butonu kullanılır.
+- Syntax highlighting cdnjs'ten yüklenir; internet yoksa sayfa düz monospace olarak
+  çalışmaya devam eder.
+- Otomatik e2e (tarayıcı) testi yoktur; doğrulama curl + manuel tıklama ile yapılır.

@@ -1,4 +1,5 @@
 import { api, setToken, clearToken, ApiError } from './api.js';
+import { saveReview } from './store.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -109,6 +110,122 @@ async function restoreSession() {
     showAuth();
   }
 }
+
+// --- Analiz akisi ---
+
+const MAX_CODE_LENGTH = 10000;
+const POLL_INTERVAL_MS = 2000; // Gateway limiti 2 token/sn; daha sik yoklamak 429 uretir.
+const POLL_TIMEOUT_MS = 60000;
+
+let lastTaskId = null;
+
+function showAnalyzeError(message) {
+  const node = el('analyze-error');
+  node.textContent = message;
+  node.hidden = !message;
+}
+
+function setStatus(text) {
+  el('status').textContent = text;
+}
+
+function updateCounter() {
+  const length = el('code').value.length;
+  el('counter').textContent = `${length} / ${MAX_CODE_LENGTH}`;
+}
+
+function openReviewTab(taskId) {
+  return window.open(`review.html?taskId=${encodeURIComponent(taskId)}`, '_blank');
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** COMPLETED/FAILED olana veya zaman asimina kadar yoklar. */
+async function pollUntilDone(taskId) {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    const task = await api.status(taskId);
+    if (task.status === 'COMPLETED' || task.status === 'FAILED') {
+      return task;
+    }
+    setStatus(`Durum: ${task.status}...`);
+  }
+  return null;
+}
+
+async function onAnalyze() {
+  const code = el('code').value;
+  if (!code.trim()) {
+    showAnalyzeError('Önce bir Java kodu yapıştır.');
+    return;
+  }
+  if (code.length > MAX_CODE_LENGTH) {
+    showAnalyzeError(`Kod çok uzun: ${code.length} karakter (en fazla ${MAX_CODE_LENGTH}).`);
+    return;
+  }
+
+  const question = el('prompt').value.trim();
+  // Backend'de language alani yok; dil bilgisi prompt uzerinden tasiniyor.
+  const prompt = `Dil: Java. ${question || 'Bu kodu incele.'}`;
+
+  el('analyze').disabled = true;
+  showAnalyzeError('');
+  el('result-card').hidden = true;
+  setStatus('Kuyruğa alınıyor...');
+
+  try {
+    const task = await api.analyze(code, prompt);
+    setStatus('Analiz ediliyor...');
+
+    const finished = await pollUntilDone(task.taskId);
+
+    if (finished === null) {
+      setStatus('');
+      showAnalyzeError('Analiz zaman aşımına uğradı. Tekrar deneyebilirsin.');
+      return;
+    }
+    if (finished.status === 'FAILED') {
+      setStatus('');
+      showAnalyzeError('Analiz başarısız oldu. Sunucu loglarına bakman gerekebilir.');
+      return;
+    }
+
+    lastTaskId = finished.taskId;
+    saveReview({
+      taskId: finished.taskId,
+      code,
+      prompt,
+      result: finished.result,
+      createdAt: Date.now(),
+    });
+
+    setStatus('Review hazır.');
+    el('result-card').hidden = false;
+
+    // Popup blocker async acilislari engelleyebilir; engellenirse butona dusuyoruz.
+    if (!openReviewTab(finished.taskId)) {
+      setStatus('Review hazır. Yeni sekme engellendi, aşağıdaki butonu kullan.');
+    }
+  } catch (error) {
+    setStatus('');
+    if (handleUnauthorized(error)) {
+      return;
+    }
+    showAnalyzeError(error instanceof ApiError ? error.message : 'Beklenmeyen bir hata oluştu.');
+  } finally {
+    el('analyze').disabled = false;
+  }
+}
+
+el('code').addEventListener('input', updateCounter);
+el('analyze').addEventListener('click', onAnalyze);
+el('open-review').addEventListener('click', () => {
+  if (lastTaskId) {
+    openReviewTab(lastTaskId);
+  }
+});
+updateCounter();
 
 el('tab-login').addEventListener('click', () => setMode('login'));
 el('tab-register').addEventListener('click', () => setMode('register'));

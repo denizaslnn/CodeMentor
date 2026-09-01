@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review — CodeMentor</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Syntax highlight opsiyoneldir: CDN'e ulasilamazsa sayfa duz monospace calisir. -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">CodeMentor · Review</span>
+    <span id="meta" class="muted"></span>
+  </header>
+
+  <main>
+    <p id="empty" class="card" hidden>Bu review bulunamadı. Sekmeyi ana ekrandan yeniden aç.</p>
+
+    <div id="content" class="review-grid" hidden>
+      <section>
+        <h2>Gönderilen Java kodu</h2>
+        <pre><code id="code-block" class="language-java"></code></pre>
+      </section>
+      <section>
+        <h2>Review</h2>
+        <pre class="plain"><code id="result-block"></code></pre>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="review.js"></script>
+</body>
+</html>

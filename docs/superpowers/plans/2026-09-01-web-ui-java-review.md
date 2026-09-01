@@ -859,7 +859,7 @@ if (!review) {
 Run:
 ```bash
 docker compose build web-ui && docker compose up -d web-ui && sleep 8
-for f in / review.html app.js api.js store.js review.js styles.css; do
+for f in / /review.html /app.js /api.js /store.js /review.js /styles.css; do
   printf "%-14s " "$f"; curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:3000$f"
 done
 curl -s http://localhost:3000/review.html | grep -c 'id="code-block"'
